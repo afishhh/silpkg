@@ -1,0 +1,17 @@
+[workspace]
+members = ["cli"]
+
+[package]
+name = "silpkg"
+version = "0.1.0"
+edition = "2021"
+authors = ["Fishhh"]
+description = "A library for working with SIL PKG archives"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# TODO: Make deflate support optional
+flate2 = { version = "1.0" } #, features = ["zlib-ng"], default-features = false }
+bitflags = "1.3"
+log = "0"

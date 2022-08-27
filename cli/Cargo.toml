@@ -1,0 +1,24 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Fishhh"]
+description = "A CLI for working with SIL PKG archives"
+
+[[bin]]
+name = "silpkg"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+silpkg = { path = ".." }
+
+env_logger = "0.10"
+log = "0.4"
+clap = { version = "4.0", features = ["derive"] }
+console = "0.15"
+indicatif = "0.17"
+
+anyhow = "1.0"
+walkdir = "2"
