@@ -32,10 +32,28 @@ use ioext::*;
 pub use flate2::Compression;
 
 bitflags::bitflags! {
-    pub struct Flags: u32 {
+    struct RawFlags: u32 {
         const DEFLATED = 1 << 24;
     }
 }
+
+#[derive(Debug, Default, Clone)]
+pub struct Flags {
+    pub compression: EntryCompression,
+}
+
+#[derive(Debug, Clone)]
+pub enum EntryCompression {
+    Deflate(flate2::Compression),
+    None,
+}
+
+impl Default for EntryCompression {
+    fn default() -> Self {
+        EntryCompression::None
+    }
+}
+
 const MAGIC: &[u8] = b"PKG\n";
 const HEADER_SIZE: u64 = 16;
 const ENTRY_SIZE: u64 = 20;
@@ -84,7 +102,7 @@ struct Entry {
     data_offset: u32,
     data_size: u32,
     unpacked_size: u32,
-    flags: Flags,
+    flags: RawFlags,
 }
 
 impl Entry {
@@ -341,7 +359,6 @@ impl<S: Read + Seek + Write> Pkg<S> {
         &mut self,
         path: String,
         flags: Flags,
-        compression: Option<Compression>,
         mut reader: impl Read,
     ) -> io::Result<()> {
         if self.path_to_entry_index_map.contains_key(&path) {
@@ -373,13 +390,16 @@ impl<S: Read + Seek + Write> Pkg<S> {
             relative_path_offset,
             path,
             data_size: 0,
-            flags,
+            flags: match flags.compression {
+                EntryCompression::Deflate(_) => RawFlags::DEFLATED,
+                EntryCompression::None => RawFlags::empty(),
+            },
             unpacked_size: 0,
         };
 
-        if flags.contains(Flags::DEFLATED) {
+        if let EntryCompression::Deflate(level) = flags.compression {
             log::trace!(target: "silpkg", "Writing compressed entry data to {}", data_offset);
-            let mut writer = ZlibEncoder::new(&mut self.storage, compression.unwrap());
+            let mut writer = ZlibEncoder::new(&mut self.storage, level);
             std::io::copy(&mut reader, &mut writer)?;
             writer.try_finish()?;
             log::trace!(target: "silpkg",
@@ -596,7 +616,7 @@ impl<S: Read + Seek> Pkg<S> {
             let path_offset_and_flags = storage.read_u32_be()?;
             let path_offset = path_offset_and_flags & 0x00FFFFFF;
             let flag_bits = path_offset_and_flags & 0xFF000000;
-            let flags = Flags::from_bits(flag_bits).ok_or_else(|| {
+            let flags = RawFlags::from_bits(flag_bits).ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Entry contains unrecognised flags {flag_bits:x}"),
@@ -691,7 +711,7 @@ impl<S: Read + Seek> Pkg<S> {
         self.storage
             .seek(io::SeekFrom::Start(entry.data_offset as u64))?;
 
-        if entry.flags.contains(Flags::DEFLATED) {
+        if entry.flags.contains(RawFlags::DEFLATED) {
             std::io::copy(
                 &mut ZlibDecoder::new((&mut self.storage).take(entry.data_size.into())),
                 &mut writer,

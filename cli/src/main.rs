@@ -166,12 +166,13 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
 
                 pkg.insert(
                     path_str.to_string(),
-                    if add_opts.compression_level.is_some() {
-                        silpkg::Flags::DEFLATED
-                    } else {
-                        silpkg::Flags::empty()
+                    silpkg::Flags {
+                        compression: add_opts
+                            .compression_level
+                            .map_or(silpkg::EntryCompression::None, |x| {
+                                silpkg::EntryCompression::Deflate(silpkg::Compression::new(x))
+                            }),
                     },
-                    add_opts.compression_level.map(silpkg::Compression::new),
                     std::fs::File::open(path)
                         .with_context(|| "Could not open input file {file}")?,
                 )
@@ -236,8 +237,11 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
                 pkg.remove(&path)?;
                 pkg.insert(
                     path.clone(),
-                    Flags::DEFLATED,
-                    Some(silpkg::Compression::new(compress_opts.compression_level)),
+                    Flags {
+                        compression: silpkg::EntryCompression::Deflate(silpkg::Compression::new(
+                            compress_opts.compression_level,
+                        )),
+                    },
                     std::io::Cursor::new(&tmp),
                 )?;
                 tmp.clear();
