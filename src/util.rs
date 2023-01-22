@@ -1,5 +1,7 @@
 use std::io::{Read, Seek, Write};
 
+use crate::base::BUFFER_SIZE;
+
 macro_rules! define_read_le_methods {
     { $($name:ident -> $ret:ty;)* } => {
         $(fn $name(&mut self) -> ::std::io::Result<$ret> {
@@ -133,7 +135,7 @@ pub trait ReadSeekWriteExt: Read + Write + Seek {
         } else if (input_offset..count).contains(&output_offset) {
             assert!(output_offset != input_offset);
 
-            let buf_size = (output_offset - input_offset).min(4096);
+            let buf_size = (output_offset - input_offset).min(BUFFER_SIZE);
 
             // TODO: Optimise this case
             if count / buf_size > 64 {
@@ -160,7 +162,7 @@ pub trait ReadSeekWriteExt: Read + Write + Seek {
                 remaining -= chunk_size as u64;
             }
         } else {
-            let mut buf = [0; 4096];
+            let mut buf = [0; BUFFER_SIZE as usize];
             let mut remaining = count;
             while remaining > 0 {
                 let chunk_size = (buf.len()).min(remaining as usize);
@@ -178,3 +180,56 @@ pub trait ReadSeekWriteExt: Read + Write + Seek {
 }
 
 impl<R: Read + Seek + Write> ReadSeekWriteExt for R {}
+
+macro_rules! declare_as_methods {
+    { $($name:ident -> $type:ty;)* } => {
+        $(fn $name(&self) -> $type;)*
+    };
+}
+
+pub trait ByteSliceExt {
+    declare_as_methods! {
+        as_u8_le -> u8;
+        as_u16_le -> u16;
+        as_u32_le -> u32;
+        as_u64_le -> u64;
+
+        as_u8_be -> u8;
+        as_u16_be -> u16;
+        as_u32_be -> u32;
+        as_u64_be -> u64;
+    }
+}
+
+macro_rules! define_as_methods {
+    (@internal_one $conversion:ident $name:ident $type:ty) => {
+        fn $name(&self) -> $type {
+            assert!(self.len() == std::mem::size_of::<$type>());
+
+            <$type>::$conversion(unsafe {(*self).try_into().unwrap_unchecked()})
+        }
+    };
+    (@one le $name:ident $type:ty) => {
+        define_as_methods!(@internal_one from_le_bytes $name $type);
+    };
+    (@one be $name:ident $type:ty) => {
+        define_as_methods!(@internal_one from_be_bytes $name $type);
+    };
+    { $($endian:ident $name:ident -> $type:ty;)* } => {
+        $(define_as_methods!(@one $endian $name $type);)*
+    };
+}
+
+impl ByteSliceExt for [u8] {
+    define_as_methods! {
+        le as_u8_le -> u8;
+        le as_u16_le -> u16;
+        le as_u32_le -> u32;
+        le as_u64_le -> u64;
+
+        be as_u8_be -> u8;
+        be as_u16_be -> u16;
+        be as_u32_be -> u32;
+        be as_u64_be -> u64;
+    }
+}

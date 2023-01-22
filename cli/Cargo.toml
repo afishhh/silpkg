@@ -17,8 +17,6 @@ silpkg = { path = ".." }
 env_logger = "0.10"
 log = "0.4"
 clap = { version = "4.0", features = ["derive"] }
-console = "0.15"
-indicatif = "0.17"
 
 anyhow = "1.0"
 walkdir = "2"

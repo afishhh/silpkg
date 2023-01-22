@@ -2,15 +2,23 @@
 
 use std::{
     fs::File,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 use anyhow::{bail, Context};
 use clap::Parser;
-use indicatif::{ProgressBar, ProgressStyle};
-use silpkg::{Flags, Pkg};
+use silpkg::{sync::Pkg, Flags};
+
+mod progress;
+use progress::{ProgressBar, ProgressBarStyle};
+mod spinner;
+use spinner::{Spinner, SpinnerStyle};
+
+const PROGRESS_BAR_STYLE: ProgressBarStyle = ProgressBarStyle { width: 60 };
+const SPINNER_STYLE: SpinnerStyle = SpinnerStyle::const_default();
+const COMPRESS_TMP_PATH: &str = "____silpkg_cli_compress_temporary_4729875987234";
 
 fn pkg_open_ro(path: &Path) -> Result<Pkg<File>, anyhow::Error> {
     Pkg::parse(File::open(path).context("Could not open pkg file")?, true)
@@ -40,6 +48,10 @@ struct List {
 struct Extract {
     pkg: PathBuf,
     output: PathBuf,
+
+    /// If an extracted file conflicts with an existing file, overwrite it.
+    #[arg(short, long)]
+    overwrite: bool,
 }
 
 #[derive(clap::Args)]
@@ -97,9 +109,6 @@ struct Opts {
 fn real_main() -> Result<ExitCode, anyhow::Error> {
     let opts = Opts::parse();
 
-    let spinner_style =
-        ProgressStyle::with_template("{prefix:.bold} {spinner} {msg}")?.tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ ");
-
     match opts.command {
         Command::List(list_opts) => {
             let pkg = pkg_open_ro(list_opts.pkg.as_path())?;
@@ -118,16 +127,36 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
                 bail!("Output path already exists and is not a directory");
             }
 
-            for path in pkg.paths().cloned().collect::<Vec<String>>() {
+            let mut paths = pkg.paths().cloned().collect::<Vec<String>>();
+            paths.sort();
+            let mut bar = ProgressBar::new(PROGRESS_BAR_STYLE, paths.len(), "".to_string());
+
+            for path in paths {
+                bar.paused(|| {
+                    eprintln!("\x1b[1mExtracting\x1b[0m {path}...");
+                });
                 let out = extract_opts.output.join(path.clone());
                 std::fs::create_dir_all(out.parent().unwrap())?;
-                pkg.extract_to(
-                    &path,
-                    std::fs::File::create_new(out.clone()).with_context(|| {
-                        format!("Could not write output file {}", out.display())
-                    })?,
-                )?;
+                std::io::copy(&mut pkg.open(&path)?, &mut {
+                    let mut opts = std::fs::OpenOptions::new();
+                    opts.write(true);
+
+                    if extract_opts.overwrite {
+                        opts.create(true);
+                    } else {
+                        opts.create_new(true);
+                    }
+
+                    opts.open(&out)
+                        .with_context(|| format!("Could not write output file {}", out.display()))?
+                })?;
+                bar.paused(|| {
+                    eprint!("\x1b[1A\x1b[2K");
+                    println!("{path}");
+                });
+                bar.inc();
             }
+            bar.finish();
         }
         Command::Add(add_opts) => {
             let mut pkg = {
@@ -142,46 +171,54 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
                 }
             };
 
-            let bar = ProgressBar::new_spinner()
-                .with_style(spinner_style.clone())
-                .with_prefix("Adding files");
+            let mut bar = Spinner::new(SPINNER_STYLE.clone(), "Adding files");
 
             let mut add_one = |path: &Path| -> Result<(), anyhow::Error> {
                 let path_str = path.to_str().filter(|x| x.is_ascii()).with_context(|| {
                     format!("Input file path {} is not valid ASCII", path.display())
                 })?;
 
-                bar.set_message({
-                    let mut msg = format!("{}", path.display());
-                    if msg.len() > 50 {
-                        msg.truncate(50);
-                        msg += "...";
+                bar.paused(|| {
+                    eprint!("\x1b[1mAdding\x1b[0m ",);
+                    if path_str.len() > 50 {
+                        eprint!("{}...", &path_str[..50]);
+                    } else {
+                        eprint!("{path_str}");
                     }
-                    msg
+                    eprintln!()
                 });
 
                 if add_opts.overwrite && pkg.contains(path_str) {
                     pkg.remove(path_str)?;
                 }
 
-                pkg.insert(
-                    path_str.to_string(),
-                    silpkg::Flags {
-                        compression: add_opts
-                            .compression_level
-                            .map_or(silpkg::EntryCompression::None, |x| {
-                                silpkg::EntryCompression::Deflate(silpkg::Compression::new(x))
-                            }),
-                    },
-                    std::fs::File::open(path)
-                        .with_context(|| "Could not open input file {file}")?,
-                )
-                .with_context(|| format!("Could not add {path_str} to archive"))?;
+                let mut writer = pkg
+                    .insert(
+                        path_str.to_string(),
+                        silpkg::Flags {
+                            compression: add_opts
+                                .compression_level
+                                .map_or(silpkg::EntryCompression::None, |x| {
+                                    silpkg::EntryCompression::Deflate(silpkg::Compression::new(x))
+                                }),
+                        },
+                    )
+                    .with_context(|| format!("Could not add {path_str} to archive"))?;
 
-                bar.inc(1);
-                bar.suspend(|| {
+                std::io::copy(
+                    &mut std::fs::File::open(path)
+                        .with_context(|| "Could not open input file {file}")?,
+                    &mut writer,
+                )
+                .with_context(|| format!("Could not write {path_str} to archive"))?;
+
+                log::trace!("done with {path_str}");
+
+                bar.paused(|| {
+                    eprint!("\x1b[1F\x1b[2K");
                     println!("{path_str}");
                 });
+                bar.inc();
 
                 Ok(())
             };
@@ -207,50 +244,50 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
                 }
             }
 
-            bar.finish_with_message("done");
+            bar.finish_with("done");
 
-            let bar = ProgressBar::new_spinner()
-                .with_style(spinner_style)
-                .with_prefix("Adding files");
-
-            bar.set_prefix("Repacking");
-            bar.set_message("");
             if add_opts.repack {
+                let bar = Spinner::new(SPINNER_STYLE.clone(), "Repacking");
+
                 // TODO: spinner here
                 pkg.repack()?;
+                bar.finish_with("done");
             }
-
-            bar.finish_with_message("done");
         }
         Command::Compress(compress_opts) => {
             let mut pkg = pkg_open_rw(&compress_opts.pkg)?;
 
-            let bar = ProgressBar::new_spinner()
-                .with_style(spinner_style)
-                .with_prefix("Compressing files");
+            let mut paths = pkg.paths().cloned().collect::<Vec<_>>();
+            paths.sort();
+            let mut bar = ProgressBar::new(PROGRESS_BAR_STYLE, paths.len(), "".to_string());
 
             let mut tmp = vec![];
-            for path in pkg.paths().cloned().collect::<Vec<_>>() {
-                bar.set_message(path.clone());
+            for path in paths {
+                bar.paused(|| {
+                    eprintln!("\x1b[1mCompressing\x1b[0m {path}...");
+                });
 
-                pkg.extract_to(&path, &mut tmp)?;
-                pkg.remove(&path)?;
+                pkg.open(&path)?.read_to_end(&mut tmp)?;
                 pkg.insert(
-                    path.clone(),
+                    COMPRESS_TMP_PATH.to_string(),
                     Flags {
                         compression: silpkg::EntryCompression::Deflate(silpkg::Compression::new(
                             compress_opts.compression_level,
                         )),
                     },
-                    std::io::Cursor::new(&tmp),
-                )?;
+                )?
+                .write_all(&tmp)
+                .with_context(|| format!("Could not compress {path}"))?;
+                pkg.replace(COMPRESS_TMP_PATH, path.clone())?;
                 tmp.clear();
 
-                bar.inc(1);
-                bar.suspend(|| {
+                bar.paused(|| {
+                    eprint!("\x1b[1F\x1b[2K");
                     println!("{path}");
-                })
+                });
+                bar.inc();
             }
+            bar.finish();
 
             pkg.repack()?;
         }
@@ -267,13 +304,12 @@ fn main() -> ExitCode {
                     f,
                     "{}",
                     match record.level() {
-                        log::Level::Error => console::style("error").red(),
-                        log::Level::Warn => console::style(" warn").yellow(),
-                        log::Level::Info => console::style(" info").blue(),
-                        log::Level::Debug => console::style("debug").magenta(),
-                        log::Level::Trace => console::style("trace").white(),
+                        log::Level::Error => "\x1b[1;31merror\x1b[0m",
+                        log::Level::Warn => "\x1b[1;33m warn\x1b[0m",
+                        log::Level::Info => "\x1b[1;34m info\x1b[0m",
+                        log::Level::Debug => "\x1b[1;35mdebug\x1b[0m",
+                        log::Level::Trace => "\x1b[1;37mtrace\x1b[0m",
                     }
-                    .bold()
                 )?;
                 write!(f, "({})", record.target())?;
                 writeln!(f, ": {line}")?;
