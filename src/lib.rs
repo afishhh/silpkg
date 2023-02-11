@@ -28,11 +28,22 @@
 #![feature(read_buf)]
 #![feature(map_many_mut)]
 
+// thiserror_core
+#![feature(error_in_core)]
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
 pub mod errors;
+
 mod util;
 pub use errors::*;
 
 mod base;
+#[cfg(feature = "std")]
 pub mod sync;
 
-pub use base::{Compression, EntryCompression, Flags, Truncate};
+pub use base::{Compression, EntryCompression, Flags};
+#[cfg(feature = "std")]
+pub use sync::Truncate;

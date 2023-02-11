@@ -1,6 +1,7 @@
-use std::{collections::HashMap, io::SeekFrom};
+use alloc::{string::{String, ToString}, vec::Vec};
 
 use flate2::Decompress;
+use hashbrown::HashMap;
 use macros::generator;
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
     ExtractError, ParseError,
 };
 
-use super::{Entry, PkgState, RawFlags, ReadSeekRequest, Response};
+use super::{Entry, PkgState, RawFlags, ReadSeekRequest, Response, SeekError, SeekFrom};
 
 #[generator(static, yield ReadSeekRequest -> Response)]
 pub fn check_magic() -> bool {
@@ -161,7 +162,7 @@ pub fn open<'coro>(
     .as_ref()
     .unwrap();
 
-    request!(seek std::io::SeekFrom::Start(entry.data_offset as u64));
+    request!(seek SeekFrom::Start(entry.data_offset as u64));
 
     Ok(if entry.flags.contains(RawFlags::DEFLATED) {
         ExtractHandle::Deflate(DeflateExtractHandle {
@@ -192,33 +193,27 @@ impl RawExtractHandle {
     }
 
     #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    pub fn seek<'coro>(&'coro mut self, seekfrom: SeekFrom) -> std::io::Result<u64> {
+    pub fn seek<'coro>(&'coro mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match seekfrom {
-            std::io::SeekFrom::Start(start) => {
+            SeekFrom::Start(start) => {
                 request!(seek SeekFrom::Start(self.offset + start));
                 Ok(start)
             }
-            std::io::SeekFrom::End(end) => {
+            SeekFrom::End(end) => {
                 match self.size.checked_add_signed(end).map(|x| x + self.offset) {
                     Some(off) => {
                         request!(seek SeekFrom::Start(off));
                         Ok(off - self.offset)
                     }
-                    None => Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "seek overflowed",
-                    )),
+                    None => Err(SeekError::InvalidInput("seek overflowed".to_string())),
                 }
             }
-            std::io::SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
+            SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
                 Some(off) => {
                     request!(seek SeekFrom::Start(self.offset + off));
                     Ok(off)
                 }
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "seek overflowed",
-                )),
+                None => Err(SeekError::InvalidInput("seek overflowed".to_string())),
             },
         }
     }

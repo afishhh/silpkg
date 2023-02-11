@@ -34,7 +34,7 @@ impl VisitMut for ReplaceGeneratorAwait {
                         let mut __response: #resume_type = Default::default();
 
                         loop {
-                            use ::std::{pin::Pin, ops::{Generator, GeneratorState}};
+                            use ::core::{pin::Pin, ops::{Generator, GeneratorState}};
 
                             match unsafe { Pin::new_unchecked(&mut __generator) }.resume(__response) {
                                 GeneratorState::Yielded(__request) => __response = yield __request.into(),
@@ -220,7 +220,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
 
         quote! {
             #(#attrs)*
-            #vis fn #name<#generic_params>(#args) -> impl ::std::ops::Generator<
+            #vis fn #name<#generic_params>(#args) -> impl ::core::ops::Generator<
                 #resume_type,
                 Yield = #yield_type,
                 Return = #return_type

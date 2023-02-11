@@ -1,9 +1,58 @@
-use std::collections::HashMap;
+use alloc::{boxed::Box, string::String, vec::Vec};
+#[cfg(feature = "std")]
+use std::io::SeekFrom as StdSeekFrom;
+
+use hashbrown::HashMap;
+
+pub enum SeekFrom {
+    Start(u64),
+    End(i64),
+    Current(i64),
+}
+
+#[cfg(feature = "std")]
+impl From<StdSeekFrom> for SeekFrom {
+    fn from(value: StdSeekFrom) -> Self {
+        match value {
+            StdSeekFrom::Start(s) => Self::Start(s),
+            StdSeekFrom::End(e) => Self::End(e),
+            StdSeekFrom::Current(c) => Self::Current(c),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<SeekFrom> for StdSeekFrom {
+    fn from(val: SeekFrom) -> Self {
+        match val {
+            SeekFrom::Start(s) => StdSeekFrom::Start(s),
+            SeekFrom::End(e) => StdSeekFrom::End(e),
+            SeekFrom::Current(c) => StdSeekFrom::Current(c),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum SeekError {
+    #[error("{0}")]
+    InvalidInput(String),
+}
+
+#[cfg(feature = "std")]
+impl From<SeekError> for std::io::Error {
+    fn from(val: SeekError) -> std::io::Error {
+        match val {
+            SeekError::InvalidInput(msg) => {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
+            }
+        }
+    }
+}
 
 pub enum ReadSeekRequest {
     Read(u64),
     ReadExact(u64),
-    Seek(std::io::SeekFrom),
+    Seek(SeekFrom),
 }
 
 pub enum WriteRequest {
@@ -121,25 +170,6 @@ macro_rules! request {
         (yield $crate::base::WriteRequest::Write($buffer.into()).into()).assert_into_written()
     };
     (@uninit_buf $size: expr) => {};
-    // (write from $reader: expr) => {{
-    //     let mut reader = $reader;
-    //     let mut total_read = 0;
-    //
-    //     let mut buf = [0; $crate::base::BUFFER_SIZE as usize];
-    //     loop {
-    //         let read = ::std::io::Read::read(&mut reader, &mut buf[..])?;
-    //         if read == 0 {
-    //             break;
-    //         }
-    //         total_read += read;
-    //
-    //         (yield $crate::base::WriteRequest::Write(bbuf.filled().to_vec()).into()).assert_none();
-    //
-    //         bbuf.clear();
-    //     }
-    //
-    //     total_read
-    // }};
     (write repeated $value: expr, $count: expr) => {
         (yield ($crate::base::WriteRequest::WriteRepeated {
             value: $value,
@@ -172,62 +202,27 @@ macro_rules! request {
         (yield $crate::base::ReadSeekRequest::Seek($seekfrom).into()).assert_into_seek()
     };
     (rewind) => {
-        (yield $crate::base::ReadSeekRequest::Seek(::std::io::SeekFrom::Start(0)).into())
+        (yield $crate::base::ReadSeekRequest::Seek($crate::base::SeekFrom::Start(0)).into())
             .assert_into_seek()
     };
     (stream len) => {{
-        let prev = (yield $crate::base::ReadSeekRequest::Seek(::std::io::SeekFrom::Current(0))
+        let prev = (yield $crate::base::ReadSeekRequest::Seek($crate::base::SeekFrom::Current(0))
             .into())
         .assert_into_seek();
-        let len = (yield $crate::base::ReadSeekRequest::Seek(::std::io::SeekFrom::End(0)).into())
-            .assert_into_seek();
-        (yield $crate::base::ReadSeekRequest::Seek(::std::io::SeekFrom::Start(prev)).into())
+        let len = (yield $crate::base::ReadSeekRequest::Seek($crate::base::SeekFrom::End(0))
+            .into())
+        .assert_into_seek();
+        (yield $crate::base::ReadSeekRequest::Seek($crate::base::SeekFrom::Start(prev)).into())
             .assert_into_seek();
         len
     }};
     (stream pos) => {{
-        (yield $crate::base::ReadSeekRequest::Seek(::std::io::SeekFrom::Current(0)).into())
+        (yield $crate::base::ReadSeekRequest::Seek($crate::base::SeekFrom::Current(0)).into())
             .assert_into_seek()
     }};
     (truncate $size: expr) => {
         (yield $crate::base::ReadSeekWriteTruncateRequest::Truncate($size).into()).assert_none()
     };
-}
-
-pub trait Truncate {
-    // FIXME: Should this be i64 instead?
-    fn truncate(&mut self, len: u64) -> std::io::Result<()>;
-}
-
-impl Truncate for Vec<u8> {
-    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
-        self.resize(len as usize, 0);
-        Ok(())
-    }
-}
-
-impl Truncate for std::fs::File {
-    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
-        self.set_len(len)
-    }
-}
-
-impl<T: Truncate> Truncate for std::io::Cursor<T> {
-    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
-        self.get_mut().truncate(len)
-    }
-}
-
-impl<T: Truncate> Truncate for &mut T {
-    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
-        (*self).truncate(len)
-    }
-}
-
-impl<T: Truncate> Truncate for Box<T> {
-    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
-        self.as_mut().truncate(len)
-    }
 }
 
 bitflags::bitflags! {
@@ -325,4 +320,5 @@ mod read;
 use macros::generator;
 pub use read::*;
 mod write;
+use thiserror::Error;
 pub use write::*;

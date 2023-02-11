@@ -1,3 +1,4 @@
+#[cfg(feature = "std")]
 use std::io::{Read, Seek, Write};
 
 use crate::base::BUFFER_SIZE;
@@ -22,6 +23,7 @@ macro_rules! define_read_be_methods {
     };
 }
 
+#[cfg(feature = "std")]
 pub trait ReadExt: Read {
     fn read_u8(&mut self) -> std::io::Result<u8> {
         let mut buf = [0u8; 1];
@@ -78,6 +80,7 @@ macro_rules! define_write_be_methods {
     };
 }
 
+#[cfg(feature = "std")]
 pub trait WriteExt: Write {
     fn write_u8(&mut self, value: u8) -> std::io::Result<()> {
         self.write_all(&[value])
@@ -120,10 +123,13 @@ pub trait WriteExt: Write {
     }
 }
 
+#[cfg(feature = "std")]
 impl<W: Write> WriteExt for W {}
 
+#[cfg(feature = "std")]
 impl<R: Read> ReadExt for R {}
 
+#[cfg(feature = "std")]
 pub trait ReadSeekWriteExt: Read + Write + Seek {
     fn copy_within(
         &mut self,
@@ -179,6 +185,7 @@ pub trait ReadSeekWriteExt: Read + Write + Seek {
     }
 }
 
+#[cfg(feature = "std")]
 impl<R: Read + Seek + Write> ReadSeekWriteExt for R {}
 
 macro_rules! declare_as_methods {
@@ -204,7 +211,7 @@ pub trait ByteSliceExt {
 macro_rules! define_as_methods {
     (@internal_one $conversion:ident $name:ident $type:ty) => {
         fn $name(&self) -> $type {
-            assert!(self.len() == std::mem::size_of::<$type>());
+            assert!(self.len() == core::mem::size_of::<$type>());
 
             <$type>::$conversion(unsafe {(*self).try_into().unwrap_unchecked()})
         }

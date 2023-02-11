@@ -1,21 +1,19 @@
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    io::SeekFrom,
-};
+use alloc::{vec, vec::Vec, string::{String, ToString}};
+use core::cmp::Ordering;
 
 use flate2::Compress;
+use hashbrown::HashMap;
 use macros::generator;
 
 use crate::{
     base::{
-        pkg_path_hash, PkgState, RawFlags, ReadSeekWriteRequest, Response, BUFFER_SIZE, ENTRY_SIZE,
-        HEADER_SIZE, MAGIC,
+        pkg_path_hash, PkgState, RawFlags, ReadSeekWriteRequest, Response, SeekFrom, BUFFER_SIZE,
+        ENTRY_SIZE, HEADER_SIZE, MAGIC,
     },
     CreateError, EntryCompression, Flags, InsertError, RenameError, RepackError, ReplaceError,
 };
 
-use super::{Entry, ReadSeekRequest, ReadSeekWriteTruncateRequest};
+use super::{Entry, ReadSeekRequest, ReadSeekWriteTruncateRequest, SeekError};
 
 const PREALLOCATED_PATH_LEN: u64 = 30;
 const PREALLOCATED_ENTRY_COUNT: u64 = 64;
@@ -64,12 +62,12 @@ impl PkgState {
         log::trace!("Moving {} entries", entries_to_move.len());
         for i in entries_to_move {
             let mut entry = self.entries[i].take().unwrap();
-            let new_offset = request!(seek std::io::SeekFrom::End(0));
+            let new_offset = request!(seek SeekFrom::End(0));
             // TODO: Do not panic on conversion to u32
-            let old_offset = std::mem::replace(&mut entry.data_offset, new_offset as u32);
+            let old_offset = core::mem::replace(&mut entry.data_offset, new_offset as u32);
 
             request!(copy old_offset.into(), entry.data_size.into(), new_offset);
-            request!(seek std::io::SeekFrom::Start(
+            request!(seek SeekFrom::Start(
                 PkgState::entry_list_offset() + i as u64 * ENTRY_SIZE,
             ));
             entry.write().await;
@@ -86,7 +84,7 @@ impl PkgState {
         request!(copy self.path_region_offset(), self.path_region_size as u64, offset);
 
         self.path_region_size = new_size as u32;
-        request!(seek std::io::SeekFrom::Start(MAGIC.len() as u64 + 8));
+        request!(seek SeekFrom::Start(MAGIC.len() as u64 + 8));
         request!(write u32 be self.path_region_size);
     }
 
@@ -99,7 +97,7 @@ impl PkgState {
 
         self.push_back_data_region(new_path_region_end as u64).await;
 
-        request!(seek std::io::SeekFrom::Start(
+        request!(seek SeekFrom::Start(
             new_path_region_start + self.path_region_empty_offset as u64,
         ));
 
@@ -107,7 +105,7 @@ impl PkgState {
 
         self.path_region_size = new_path_region_size;
 
-        request!(seek std::io::SeekFrom::Start(MAGIC.len() as u64 + 8));
+        request!(seek SeekFrom::Start(MAGIC.len() as u64 + 8));
         request!(write u32 be self.path_region_size);
     }
 
@@ -128,7 +126,7 @@ impl PkgState {
         )
         .await;
 
-        request!(seek std::io::SeekFrom::Start(entry_list_grow_start));
+        request!(seek SeekFrom::Start(entry_list_grow_start));
         request!(write repeated 0, required_extra_entry_space.into());
 
         self.entries.reserve_exact(amount as usize);
@@ -136,7 +134,7 @@ impl PkgState {
             self.entries.push(None);
         }
 
-        request!(seek std::io::SeekFrom::Start(MAGIC.len() as u64 + 4));
+        request!(seek SeekFrom::Start(MAGIC.len() as u64 + 4));
         request!(write u32 be self.entries.len() as u32);
     }
 
@@ -152,7 +150,7 @@ impl PkgState {
         }
         let offset = self.path_region_empty_offset;
 
-        request!(seek std::io::SeekFrom::Start(
+        request!(seek SeekFrom::Start(
             self.path_region_offset() + self.path_region_empty_offset as u64,
         ));
 
@@ -254,6 +252,7 @@ impl PkgState {
             (Some(_), None) => {
                 self.rename(src, dst).await.map_err(|x| match x {
                     RenameError::NotFound | RenameError::AlreadyExists => unreachable!(),
+                    #[cfg(feature = "std")]
                     RenameError::Io(err) => ReplaceError::Io(err),
                 })?;
 
@@ -267,7 +266,7 @@ impl PkgState {
 
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
     fn write_packed_path_region_at(&mut self, offset: u64) -> u64 {
-        request!(seek std::io::SeekFrom::Start(offset));
+        request!(seek SeekFrom::Start(offset));
 
         let mut size = 0;
         for entry in self.entries.iter_mut().map(|e| e.as_mut().unwrap()) {
@@ -351,7 +350,7 @@ impl PkgState {
 
         // And finally, update the header and write the entries!
         log::trace!(target: "silpkg", "Rewriting entry list");
-        request!(seek std::io::SeekFrom::Start(MAGIC.len() as u64 + 4));
+        request!(seek SeekFrom::Start(MAGIC.len() as u64 + 4));
         request!(write u32 be self.entries.len() as u32);
         request!(write u32 be path_region_size as u32);
 
@@ -388,7 +387,7 @@ impl PkgState {
             .is_none());
 
         let relative_path_offset = self.insert_path_into_path_region(&path).await;
-        let data_offset = request!(seek std::io::SeekFrom::End(0));
+        let data_offset = request!(seek SeekFrom::End(0));
 
         Ok(InsertHandle {
             inner: match flags.compression {
@@ -453,7 +452,7 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    fn flush_internal(&mut self) -> std::marker::PhantomData<&'b u64> {
+    fn flush_internal(&mut self) -> core::marker::PhantomData<&'b u64> {
         match &mut self.inner {
             InnerInsertHandle::Deflate(deflate) => deflate.flush().await,
             _ => (),
@@ -486,7 +485,7 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
             },
         };
 
-        request!(seek std::io::SeekFrom::Start(
+        request!(seek SeekFrom::Start(
             PkgState::entry_list_offset() + self.entry_slot as u64 * ENTRY_SIZE,
         ));
 
@@ -497,7 +496,7 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    pub fn flush(&mut self) -> std::marker::PhantomData<&'b u64> {
+    pub fn flush(&mut self) -> core::marker::PhantomData<&'b u64> {
         let (offset, cursor) = match self.inner {
             InnerInsertHandle::Raw(RawInsertHandle { cursor, offset, .. })
             | InnerInsertHandle::Deflate(DeflateInsertHandle {
@@ -522,13 +521,14 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
 impl RawInsertHandle {
     // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    pub fn write(&mut self, buf: &[u8]) -> usize {
         log::trace!("Writing entry data to {}", self.offset);
+
         let written = request!(write buf);
         self.size += written as u64;
         self.cursor += written as u64;
 
-        Ok(written)
+        written
     }
 
     #[generator(static, yield ReadSeekRequest -> Response)]
@@ -543,33 +543,27 @@ impl RawInsertHandle {
 
     // FIXME: This piece of code is duplicated in ExtractHandle.
     #[generator(static, yield ReadSeekRequest -> Response)]
-    pub fn seek(&mut self, seekfrom: SeekFrom) -> std::io::Result<u64> {
+    pub fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match seekfrom {
-            std::io::SeekFrom::Start(start) => {
+            SeekFrom::Start(start) => {
                 request!(seek SeekFrom::Start(self.offset + start));
                 Ok(start)
             }
-            std::io::SeekFrom::End(end) => {
+            SeekFrom::End(end) => {
                 match self.size.checked_add_signed(end).map(|x| x + self.offset) {
                     Some(off) => {
                         request!(seek SeekFrom::Start(off));
                         Ok(off - self.offset)
                     }
-                    None => Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "seek before zero",
-                    )),
+                    None => Err(SeekError::InvalidInput("seek before zero".to_string())),
                 }
             }
-            std::io::SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
+            SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
                 Some(off) => {
                     request!(seek SeekFrom::Start(self.offset + off));
                     Ok(off)
                 }
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "seek before zero",
-                )),
+                None => Err(SeekError::InvalidInput("seek before zero".to_string())),
             },
         }
     }
@@ -578,7 +572,7 @@ impl RawInsertHandle {
 impl DeflateInsertHandle {
     // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn write(&mut self, mut buf: &[u8]) -> std::io::Result<usize> {
+    pub fn write(&mut self, mut buf: &[u8]) -> usize {
         log::trace!("Writing compressed entry data at {}", self.offset);
 
         let mut output = 0;
@@ -623,7 +617,7 @@ impl DeflateInsertHandle {
         self.size += output;
         self.unpacked_size += written as u64;
 
-        Ok(written)
+        written
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response)]

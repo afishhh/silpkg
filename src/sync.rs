@@ -8,12 +8,48 @@ use std::{
 use crate::{
     base::{
         self, Flags, InnerInsertHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
-        ReadSeekWriteTruncateRequest, Response, Truncate, WriteRequest,
+        ReadSeekWriteTruncateRequest, Response, WriteRequest,
     },
     errors::ParseError,
     util::{ReadSeekWriteExt, WriteExt},
     CreateError, ExtractError, InsertError, RenameError, RepackError, ReplaceError,
 };
+
+pub trait Truncate {
+    // FIXME: Should this be i64 instead?
+    fn truncate(&mut self, len: u64) -> std::io::Result<()>;
+}
+
+impl Truncate for Vec<u8> {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        self.resize(len as usize, 0);
+        Ok(())
+    }
+}
+
+impl Truncate for std::fs::File {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        self.set_len(len)
+    }
+}
+
+impl<T: Truncate> Truncate for std::io::Cursor<T> {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        self.get_mut().truncate(len)
+    }
+}
+
+impl<T: Truncate> Truncate for &mut T {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        (*self).truncate(len)
+    }
+}
+
+impl<T: Truncate> Truncate for Box<T> {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        self.as_mut().truncate(len)
+    }
+}
 
 struct SyncDriver<S> {
     storage: S,
@@ -41,7 +77,7 @@ impl<S: Read + Seek> SyncDriver<S> {
                 self.storage.read_exact(&mut buf)?;
                 Response::Read(buf)
             }
-            ReadSeekRequest::Seek(offset) => Response::Seek(self.storage.seek(offset)?),
+            ReadSeekRequest::Seek(offset) => Response::Seek(self.storage.seek(offset.into())?),
         })
     }
 
@@ -152,7 +188,7 @@ impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
 impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match &mut self.handle {
-            base::ExtractHandle::Raw(handle) => self.driver.drive_read(handle.seek(pos))?,
+            base::ExtractHandle::Raw(handle) => Ok(self.driver.drive_read(handle.seek(pos.into()))??),
             // FIXME: Should this really work like this?
             base::ExtractHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
@@ -235,8 +271,8 @@ pub struct EntryWriter<'a, S: Read + Seek + Write> {
 impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => self.driver.drive_write(handle.write(buf))?,
-            InnerInsertHandle::Deflate(handle) => self.driver.drive_write(handle.write(buf))?,
+            InnerInsertHandle::Raw(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
+            InnerInsertHandle::Deflate(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
         }
     }
 
@@ -264,7 +300,7 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
 impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => self.driver.drive_read(handle.seek(pos))?,
+            InnerInsertHandle::Raw(handle) => Ok(self.driver.drive_read(handle.seek(pos.into()))??),
             InnerInsertHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,

@@ -9,14 +9,20 @@ authors = ["Fishhh"]
 license = "MIT OR Apache-2.0"
 description = "A library for working with SIL PKG archives"
 
+[features]
+default = ["std"]
+std = ["log/std", "thiserror/std"]
+
 [dependencies]
 # TODO: Make deflate support optional
 flate2 = { version = "1.0" } #, features = ["zlib-ng"], default-features = false }
 bitflags = "1"
-log = "0.4"
-thiserror = "1"
+log = { version = "0.4", default-features = false }
+thiserror = { package = "thiserror-core", version = "1", default-features = false }
+# no_std hashmap
+hashbrown = "0.13"
 
-macros = { path = "./macros" }
+macros = { path = "./macros", default-features = false }
 
 [dev-dependencies]
 # Enable logging during testing

@@ -1,3 +1,4 @@
+use alloc::string::String;
 use thiserror::Error;
 
 use crate::base::{ENTRY_SIZE, HEADER_SIZE};
@@ -24,12 +25,14 @@ pub enum ParseError {
     #[error("Archive contains two entries with the same path {0}")]
     SamePath(String),
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, Error)]
 pub enum CreateError {
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -41,6 +44,7 @@ pub enum RenameError {
     #[error("Desination entry already exists")]
     AlreadyExists,
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -50,6 +54,7 @@ pub enum ReplaceError {
     #[error("Entry does not exist")]
     NotFound,
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -59,6 +64,7 @@ pub enum InsertError {
     #[error("An entry with the same path already exists")]
     AlreadyExists,
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -68,6 +74,7 @@ pub enum ExtractError {
     #[error("Entry does not exist")]
     NotFound,
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -77,10 +84,12 @@ pub enum RepackError {
     #[error("Repacking PKGs with overlapping entries is not supported (yet)")]
     OverlappingEntries,
 
+    #[cfg(feature = "std")]
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
+#[cfg(feature = "std")]
 impl From<CreateError> for std::io::Error {
     fn from(val: CreateError) -> Self {
         match val {
@@ -89,6 +98,7 @@ impl From<CreateError> for std::io::Error {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<RenameError> for std::io::Error {
     fn from(val: RenameError) -> Self {
         match val {
@@ -103,6 +113,7 @@ impl From<RenameError> for std::io::Error {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<InsertError> for std::io::Error {
     fn from(val: InsertError) -> Self {
         match val {
@@ -114,6 +125,7 @@ impl From<InsertError> for std::io::Error {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<ExtractError> for std::io::Error {
     fn from(val: ExtractError) -> Self {
         match val {
