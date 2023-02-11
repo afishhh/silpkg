@@ -1,17 +1,24 @@
 //! `silpkg` is a library for interacting with [SIL](https://achurch.org/SIL/) PKG files
 //!
 //! # Features
-//! - [X] reading PKG files
-//! - [X] reading uncompressed entries
-//! - [X] adding uncompressed entries
-//! - [X] reading deflate compressed entries
-//! - [X] adding deflate compressed entries
-//! - [X] creating new PKG files
+//! This library separates parsing/modification logic from IO by using [generators](https://doc.rust-lang.org/beta/unstable-book/language-features/generators.html)
+//! and aims to support many ways of interfacing with the base logic module.
+//! Currently only a synchronous interface is implemented in [`sync`].
+//!
+//! - [X] Sync
+//!     - [X] reading PKG files
+//!     - [X] reading uncompressed entries
+//!     - [X] adding uncompressed entries
+//!     - [X] reading deflate compressed entries
+//!     - [X] adding deflate compressed entries
+//!     - [X] creating new PKG files
+//! - [ ] Slice
+//! - [ ] Async
 //!
 //! # Quick start
-//! To open an existing archive use [`Pkg::parse`], and
-//! to create a new archive use [`Pkg::create`].
-//! For information on how to interact with archives look around in [`Pkg`]'s documnetaiton.
+//! To open an existing archive use [`Pkg::parse`](sync::Pkg::parse).
+//! To create a new archive use [`Pkg::create`](sync::Pkg::create).
+//! For information on how to interact with archives look around in [`Pkg`](sync::Pkg)'s documentation.
 
 #![feature(seek_stream_len)]
 #![feature(iterator_try_collect)]
@@ -28,4 +35,4 @@ pub use errors::*;
 mod base;
 pub mod sync;
 
-pub use base::{Compression, EntryCompression, Flags};
+pub use base::{Compression, EntryCompression, Flags, Truncate};
