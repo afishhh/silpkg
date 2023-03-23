@@ -110,7 +110,7 @@ fn add_parse_extract() {
         data.iter().map(|(n, d)| (n.to_string(), d.as_slice())),
     );
 
-    let mut pkg = Pkg::parse(&mut storage, true).unwrap();
+    let mut pkg = Pkg::parse(&mut storage).unwrap();
 
     extract(
         &mut pkg,
@@ -133,7 +133,7 @@ fn add_parse_repack_extract() {
     );
 
     pkg.repack().unwrap();
-    let mut pkg = Pkg::parse(&mut storage, true).unwrap();
+    let mut pkg = Pkg::parse(&mut storage).unwrap();
 
     extract(
         &mut pkg,
@@ -260,7 +260,7 @@ fn everything() {
         *name = format!("{name}-renamed")
     }
 
-    let mut pkg = Pkg::parse(&mut storage, true).unwrap();
+    let mut pkg = Pkg::parse(&mut storage).unwrap();
 
     extract(
         &mut pkg,
@@ -268,7 +268,7 @@ fn everything() {
     );
 
     pkg.repack().unwrap();
-    let mut pkg = Pkg::parse(&mut storage, true).unwrap();
+    let mut pkg = Pkg::parse(&mut storage).unwrap();
 
     extract(
         &mut pkg,

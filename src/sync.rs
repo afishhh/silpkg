@@ -12,11 +12,13 @@ use crate::{
     },
     errors::ParseError,
     util::{ReadSeekWriteExt, WriteExt},
-    CreateError, ExtractError, InsertError, RenameError, RepackError, ReplaceError,
+    CreateError, InsertError, OpenError, RemoveError, RenameError, RepackError, ReplaceError,
 };
 
+/// A trait for objects that can be truncated.
 pub trait Truncate {
     // FIXME: Should this be i64 instead?
+    /// Truncates this object to the given length.
     fn truncate(&mut self, len: u64) -> std::io::Result<()>;
 }
 
@@ -166,11 +168,13 @@ impl<S: Read + Seek + Write + Truncate> SyncDriver<S> {
     }
 }
 
+/// A synchronous PKG archive reader/writer.
 pub struct Pkg<S: Read + Seek> {
     driver: SyncDriver<S>,
     state: PkgState,
 }
 
+/// A reader that allows reading a single entry from a [`Pkg`]
 pub struct EntryReader<'a, S: Read + Seek> {
     driver: &'a mut SyncDriver<S>,
     handle: base::ExtractHandle,
@@ -185,10 +189,20 @@ impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
     }
 }
 
+/// # Notes
+/// Even though this type implements [`Seek`] [`seek`]ing will not always succeed, for example if the entry
+/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`] if the `io_error_more`
+/// feature is enabled or [`Other`] otherwise.
+///
+/// [`seek`]: EntryReader::seek
+/// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
+/// [`Other`]: std::io::ErrorKind::Other
 impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match &mut self.handle {
-            base::ExtractHandle::Raw(handle) => Ok(self.driver.drive_read(handle.seek(pos.into()))??),
+            base::ExtractHandle::Raw(handle) => {
+                Ok(self.driver.drive_read(handle.seek(pos.into()))??)
+            }
             // FIXME: Should this really work like this?
             base::ExtractHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
@@ -202,22 +216,26 @@ impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
 }
 
 impl<S: Read + Seek> Pkg<S> {
+    /// Checks whether the archive contains `path`.
     pub fn contains(&self, path: &str) -> bool {
         self.state.contains(path)
     }
 
+    /// Returns an iterator over all the paths in the archive.
     pub fn paths(&self) -> impl Iterator<Item = &String> {
         self.state.paths()
     }
 
-    pub fn parse(storage: S, expect_magic: bool) -> Result<Self, ParseError> {
+    /// Parses a [`Pkg`] from the supplied reader.
+    pub fn parse(storage: S) -> Result<Self, ParseError> {
         let mut driver = SyncDriver::new(storage);
-        let state = driver.drive_read(base::parse(expect_magic))??;
+        let state = driver.drive_read(base::parse(true))??;
 
         Ok(Self { driver, state })
     }
 
-    pub fn open(&mut self, path: &str) -> Result<EntryReader<S>, ExtractError> {
+    /// Opens an entry for reading.
+    pub fn open(&mut self, path: &str) -> Result<EntryReader<S>, OpenError> {
         let handle = self.driver.drive_read(base::open(&self.state, path))??;
 
         Ok(EntryReader {
@@ -263,9 +281,22 @@ impl<S: Read + Seek> Pkg<S> {
     // }
 } // Read + Seek
 
+/// A writer that allows writing a single entry into a [`Pkg`].
 pub struct EntryWriter<'a, S: Read + Seek + Write> {
     driver: &'a mut SyncDriver<S>,
     handle: ManuallyDrop<base::InsertHandle<'a>>,
+}
+
+impl<'a, S: Read + Seek + Write> EntryWriter<'a, S> {
+    /// Writes entry metadata to the underlying writer.
+    pub fn finish(mut self) -> std::io::Result<()> {
+        let handle = unsafe { ManuallyDrop::take(&mut self.handle) };
+        self.driver.drive_write(handle.finish())?;
+        self.driver.get_mut().flush()?;
+        std::mem::forget(self);
+
+        Ok(())
+    }
 }
 
 impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
@@ -297,10 +328,20 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
     }
 }
 
+/// # Notes
+/// Even though this type implements [`Seek`] [`seek`]ing will not always succeed, for example if the entry
+/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`] if the `io_error_more`
+/// feature is enabled or [`Other`] otherwise.
+///
+/// [`seek`]: EntryReader::seek
+/// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
+/// [`Other`]: std::io::ErrorKind::Other
 impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => Ok(self.driver.drive_read(handle.seek(pos.into()))??),
+            InnerInsertHandle::Raw(handle) => {
+                Ok(self.driver.drive_read(handle.seek(pos.into()))??)
+            }
             InnerInsertHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
@@ -313,14 +354,24 @@ impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
 }
 
 impl<'a, S: Read + Seek + Write> Drop for EntryWriter<'a, S> {
+    /// Writes entry metadata to the underlying writer.
+    ///
+    /// # Errors
+    /// This function will ignore IO errors!
+    /// If you need to handle them use [`finish`](Self::finish).
     fn drop(&mut self) {
         let handle = unsafe { ManuallyDrop::take(&mut self.handle) };
-        // TODO: Mention this ignoring errors in the description of EntryWriter
         _ = self.driver.drive_write(handle.finish());
     }
 }
 
 impl<S: Read + Seek + Write> Pkg<S> {
+    /// Create a new archive in `storage`.
+    ///
+    /// # Notes
+    /// Note that this function does not truncate the writer to allow for use with non [`Truncate`]
+    /// writers, this means that if the writer already contains data it may still remain there until
+    /// it's overwritten by inserted data or the archive is [`repack`](Self::repack)ed.
     pub fn create(storage: S) -> Result<Self, CreateError> {
         let mut driver = SyncDriver::new(storage);
         let state = driver.drive_write(PkgState::create())??;
@@ -328,18 +379,52 @@ impl<S: Read + Seek + Write> Pkg<S> {
         Ok(Self { driver, state })
     }
 
-    pub fn remove(&mut self, path: &str) -> std::io::Result<bool> {
-        self.driver.drive_write(self.state.remove(path))
+    /// Removes an entry from the archive.
+    pub fn remove(&mut self, path: &str) -> Result<(), RemoveError> {
+        self.driver.drive_write(self.state.remove(path))?
     }
 
+    /// Renames `src` to `dst`.
+    ///
+    /// # Errors
+    /// - [`RenameError::NotFound`] if `src` does not exist.
+    /// - [`RenameError::AlreadyExists`] if `dst` already exists.
+    /// - [`RenameError::Io`] if an IO error occurs.
     pub fn rename(&mut self, src: &str, dst: String) -> Result<(), RenameError> {
         self.driver.drive_write(self.state.rename(src, dst))?
     }
 
+    /// Replaces `dst` with `src` if it doesn't exist or renames `src` to `dst` otherwise.
+    ///
+    /// Unlike [`rename`](Self::rename) this function will not fail if `dst` already exists.
     pub fn replace(&mut self, src: &str, dst: String) -> Result<(), ReplaceError> {
         self.driver.drive_write(self.state.replace(src, dst))?
     }
 
+    /// Inserts a new entry into the archive.
+    ///
+    /// # Examples
+    /// ```
+    /// # use std::io::{Read, Write};
+    /// # use silpkg::{EntryCompression, Compression, Flags, sync::*};
+    /// let mut storage = Vec::new();
+    ///
+    /// {
+    ///     let mut pkg = Pkg::create(std::io::Cursor::new(&mut storage))?;
+    ///     pkg.insert("hello".to_string(), Flags {
+    ///         compression: EntryCompression::Deflate(Compression::new(5))
+    ///     })?.write_all(b"A quick brown fox jumps over the lazy dog.")?;
+    /// }
+    ///
+    /// {
+    ///     let mut pkg = Pkg::parse(std::io::Cursor::new(&mut storage))?;
+    ///     let mut buf = String::new();
+    ///     pkg.open("hello")?.read_to_string(&mut buf)?;
+    ///     assert_eq!(buf, "A quick brown fox jumps over the lazy dog.");
+    /// }
+    ///
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn insert(&mut self, path: String, flags: Flags) -> Result<EntryWriter<S>, InsertError> {
         let handle = self.driver.drive_write(self.state.insert(path, flags))??;
 
@@ -349,6 +434,7 @@ impl<S: Read + Seek + Write> Pkg<S> {
         })
     }
 
+    /// Flushes the underlying writer
     pub fn flush(&mut self) -> std::io::Result<()> {
         self.driver.get_mut().flush()
     }

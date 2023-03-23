@@ -10,7 +10,7 @@ use crate::{
         pkg_path_hash, PkgState, RawFlags, ReadSeekWriteRequest, Response, SeekFrom, BUFFER_SIZE,
         ENTRY_SIZE, HEADER_SIZE, MAGIC,
     },
-    CreateError, EntryCompression, Flags, InsertError, RenameError, RepackError, ReplaceError,
+    CreateError, EntryCompression, Flags, InsertError, RenameError, RepackError, ReplaceError, RemoveError,
 };
 
 use super::{Entry, ReadSeekRequest, ReadSeekWriteTruncateRequest, SeekError};
@@ -163,7 +163,7 @@ impl PkgState {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn remove(&mut self, path: &str) -> bool {
+    pub fn remove(&mut self, path: &str) -> Result<(), RemoveError> {
         if let Some(entry_idx) = self.path_to_entry_index_map.remove(path) {
             self.entries[entry_idx] = None;
 
@@ -176,9 +176,9 @@ impl PkgState {
             //       but we can't do that until specialisation comes around. (if we want to support non
             //       Truncate writers)
 
-            true
+            Ok(())
         } else {
-            false
+            Err(RemoveError::NotFound)
         }
     }
 

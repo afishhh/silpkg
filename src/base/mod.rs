@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "std")]
 use std::io::SeekFrom as StdSeekFrom;
 
@@ -231,21 +231,27 @@ bitflags::bitflags! {
     }
 }
 
+/// Flags that change the way entries are written.
 #[derive(Debug, Default, Clone)]
 pub struct Flags {
+    /// The kind of compression in use.
     pub compression: EntryCompression,
 }
 
 pub use flate2::Compression;
 
+/// An enum that specifies the ways entries can be compressed.
 #[derive(Debug, Default, Clone)]
 pub enum EntryCompression {
+    /// Deflate compression with the specified level
     Deflate(flate2::Compression),
     #[default]
+    /// No compression
     None,
 }
 
 impl EntryCompression {
+    /// Returns whether `self` is [`None`](EntryCompression::None)
     pub fn is_none(&self) -> bool {
         matches!(self, EntryCompression::None)
     }

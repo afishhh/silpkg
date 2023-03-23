@@ -18,7 +18,10 @@
 //! # Quick start
 //! To open an existing archive use [`Pkg::parse`](sync::Pkg::parse).
 //! To create a new archive use [`Pkg::create`](sync::Pkg::create).
-//! For information on how to interact with archives look around in [`Pkg`](sync::Pkg)'s documentation.
+//! For information on how to interact with archives look around in [`Pkg`](sync::Pkg).
+
+#![warn(missing_docs)]
+#![feature(doc_cfg)]
 
 #![feature(seek_stream_len)]
 #![feature(iterator_try_collect)]
@@ -35,15 +38,23 @@
 
 extern crate alloc;
 
+/// Defines all the errors used by this library.
+/// 
+/// # no_std
+/// Note that the `Io` variants are not included in `no_std` environments.
 pub mod errors;
 
 mod util;
 pub use errors::*;
 
 mod base;
+
+/// A synchronous interface for reading and writing PKG archives.
 #[cfg(feature = "std")]
+#[doc(cfg(feature = "std"))]
 pub mod sync;
 
 pub use base::{Compression, EntryCompression, Flags};
 #[cfg(feature = "std")]
+#[doc(cfg(feature = "std"))]
 pub use sync::Truncate;

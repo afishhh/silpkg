@@ -7,7 +7,7 @@ use macros::generator;
 use crate::{
     base::{BUFFER_SIZE, ENTRY_SIZE, HEADER_SIZE, MAGIC},
     util::ByteSliceExt,
-    ExtractError, ParseError,
+    OpenError, ParseError,
 };
 
 use super::{Entry, PkgState, RawFlags, ReadSeekRequest, Response, SeekError, SeekFrom};
@@ -154,10 +154,10 @@ pub enum ExtractHandle {
 pub fn open<'coro>(
     state: &'coro PkgState,
     path: &'coro str,
-) -> Result<ExtractHandle, ExtractError> {
+) -> Result<ExtractHandle, OpenError> {
     let entry = state.entries[match state.path_to_entry_index_map.get(path) {
         Some(index) => *index,
-        None => return Err(ExtractError::NotFound),
+        None => return Err(OpenError::NotFound),
     }]
     .as_ref()
     .unwrap();
