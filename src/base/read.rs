@@ -1,4 +1,7 @@
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use flate2::Decompress;
 use hashbrown::HashMap;
@@ -7,10 +10,12 @@ use macros::generator;
 use crate::{
     base::{BUFFER_SIZE, ENTRY_SIZE, HEADER_SIZE, MAGIC},
     util::ByteSliceExt,
-    OpenError, ParseError,
 };
 
-use super::{Entry, PkgState, RawFlags, ReadSeekRequest, Response, SeekError, SeekFrom};
+use super::{
+    Entry, OpenError, ParseError, PkgState, RawFlags, ReadSeekRequest, Response, SeekError,
+    SeekFrom,
+};
 
 #[generator(static, yield ReadSeekRequest -> Response)]
 pub fn check_magic() -> bool {
@@ -151,10 +156,7 @@ pub enum ExtractHandle {
 }
 
 #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-pub fn open<'coro>(
-    state: &'coro PkgState,
-    path: &'coro str,
-) -> Result<ExtractHandle, OpenError> {
+pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ExtractHandle, OpenError> {
     let entry = state.entries[match state.path_to_entry_index_map.get(path) {
         Some(index) => *index,
         None => return Err(OpenError::NotFound),

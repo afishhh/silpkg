@@ -3,6 +3,7 @@ use alloc::{string::String, vec::Vec};
 use std::io::SeekFrom as StdSeekFrom;
 
 use hashbrown::HashMap;
+use thiserror::Error;
 
 pub enum SeekFrom {
     Start(u64),
@@ -320,11 +321,12 @@ impl PkgState {
     }
 }
 
+pub use crate::errors::*;
+
 mod common;
 pub use common::*;
 mod read;
 use macros::generator;
 pub use read::*;
 mod write;
-use thiserror::Error;
 pub use write::*;

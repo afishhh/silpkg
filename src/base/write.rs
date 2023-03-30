@@ -1,4 +1,8 @@
-use alloc::{vec, vec::Vec, string::{String, ToString}};
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::cmp::Ordering;
 
 use flate2::Compress;
@@ -10,10 +14,13 @@ use crate::{
         pkg_path_hash, PkgState, RawFlags, ReadSeekWriteRequest, Response, SeekFrom, BUFFER_SIZE,
         ENTRY_SIZE, HEADER_SIZE, MAGIC,
     },
-    CreateError, EntryCompression, Flags, InsertError, RenameError, RepackError, ReplaceError, RemoveError,
+    EntryCompression, Flags,
 };
 
-use super::{Entry, ReadSeekRequest, ReadSeekWriteTruncateRequest, SeekError};
+use super::{
+    CreateError, Entry, InsertError, ReadSeekRequest, ReadSeekWriteTruncateRequest, RemoveError,
+    RenameError, RepackError, ReplaceError, SeekError,
+};
 
 const PREALLOCATED_PATH_LEN: u64 = 30;
 const PREALLOCATED_ENTRY_COUNT: u64 = 64;

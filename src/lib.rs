@@ -22,7 +22,6 @@
 
 #![warn(missing_docs)]
 #![feature(doc_cfg)]
-
 #![feature(seek_stream_len)]
 #![feature(iterator_try_collect)]
 #![feature(map_try_insert)]
@@ -30,24 +29,24 @@
 #![feature(generators, generator_trait)]
 #![feature(read_buf)]
 #![feature(map_many_mut)]
-
 // thiserror_core
 #![feature(error_in_core)]
-
+// this could be removed if necessary as it's only used in errors.rs to implement from conversion
+// between errors, but we already use many unstable features and this is the cleaner option
+#![feature(auto_traits)]
+#![feature(negative_impls)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
 /// Defines all the errors used by this library.
-/// 
+///
 /// # no_std
 /// Note that the `Io` variants are not included in `no_std` environments.
 pub mod errors;
 
-mod util;
-pub use errors::*;
-
 mod base;
+mod util;
 
 /// A synchronous interface for reading and writing PKG archives.
 #[cfg(feature = "std")]

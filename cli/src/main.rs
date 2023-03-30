@@ -21,7 +21,7 @@ const SPINNER_STYLE: SpinnerStyle = SpinnerStyle::const_default();
 const COMPRESS_TMP_PATH: &str = "____silpkg_cli_compress_temporary_4729875987234";
 
 fn pkg_open_ro(path: &Path) -> Result<Pkg<File>, anyhow::Error> {
-    Pkg::parse(File::open(path).context("Could not open pkg file")?, true)
+    Pkg::parse(File::open(path).context("Could not open pkg file")?)
         .context("Could not parse pkg file")
 }
 
@@ -32,7 +32,6 @@ fn pkg_open_rw(path: &Path) -> Result<Pkg<File>, anyhow::Error> {
             .write(true)
             .open(path)
             .context("Could not open pkg file")?,
-        true,
     )
     .context("Could not parse pkg file")
 }

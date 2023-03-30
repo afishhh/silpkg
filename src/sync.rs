@@ -5,15 +5,25 @@ use std::{
     pin::Pin,
 };
 
+use base::FlattenResult;
+
 use crate::{
     base::{
         self, Flags, InnerInsertHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
         ReadSeekWriteTruncateRequest, Response, WriteRequest,
     },
-    errors::ParseError,
+    errors,
     util::{ReadSeekWriteExt, WriteExt},
-    CreateError, InsertError, OpenError, RemoveError, RenameError, RepackError, ReplaceError,
 };
+
+type CreateError = errors::CreateError<std::io::Error>;
+type ParseError = errors::ParseError<std::io::Error>;
+type InsertError = errors::InsertError<std::io::Error>;
+type OpenError = errors::OpenError<std::io::Error>;
+type RemoveError = errors::RemoveError<std::io::Error>;
+type RenameError = errors::RenameError<std::io::Error>;
+type RepackError = errors::RepackError<std::io::Error>;
+type ReplaceError = errors::ReplaceError<std::io::Error>;
 
 /// A trait for objects that can be truncated.
 pub trait Truncate {
@@ -229,14 +239,17 @@ impl<S: Read + Seek> Pkg<S> {
     /// Parses a [`Pkg`] from the supplied reader.
     pub fn parse(storage: S) -> Result<Self, ParseError> {
         let mut driver = SyncDriver::new(storage);
-        let state = driver.drive_read(base::parse(true))??;
+        let state = driver.drive_read(base::parse(true)).flatten()?;
 
         Ok(Self { driver, state })
     }
 
     /// Opens an entry for reading.
     pub fn open(&mut self, path: &str) -> Result<EntryReader<S>, OpenError> {
-        let handle = self.driver.drive_read(base::open(&self.state, path))??;
+        let handle = self
+            .driver
+            .drive_read(base::open(&self.state, path))
+            .flatten()?;
 
         Ok(EntryReader {
             driver: &mut self.driver,
@@ -374,14 +387,14 @@ impl<S: Read + Seek + Write> Pkg<S> {
     /// it's overwritten by inserted data or the archive is [`repack`](Self::repack)ed.
     pub fn create(storage: S) -> Result<Self, CreateError> {
         let mut driver = SyncDriver::new(storage);
-        let state = driver.drive_write(PkgState::create())??;
+        let state = driver.drive_write(PkgState::create()).flatten()?;
 
         Ok(Self { driver, state })
     }
 
     /// Removes an entry from the archive.
     pub fn remove(&mut self, path: &str) -> Result<(), RemoveError> {
-        self.driver.drive_write(self.state.remove(path))?
+        self.driver.drive_write(self.state.remove(path)).flatten()
     }
 
     /// Renames `src` to `dst`.
@@ -391,14 +404,18 @@ impl<S: Read + Seek + Write> Pkg<S> {
     /// - [`RenameError::AlreadyExists`] if `dst` already exists.
     /// - [`RenameError::Io`] if an IO error occurs.
     pub fn rename(&mut self, src: &str, dst: String) -> Result<(), RenameError> {
-        self.driver.drive_write(self.state.rename(src, dst))?
+        self.driver
+            .drive_write(self.state.rename(src, dst))
+            .flatten()
     }
 
     /// Replaces `dst` with `src` if it doesn't exist or renames `src` to `dst` otherwise.
     ///
     /// Unlike [`rename`](Self::rename) this function will not fail if `dst` already exists.
     pub fn replace(&mut self, src: &str, dst: String) -> Result<(), ReplaceError> {
-        self.driver.drive_write(self.state.replace(src, dst))?
+        self.driver
+            .drive_write(self.state.replace(src, dst))
+            .flatten()
     }
 
     /// Inserts a new entry into the archive.
@@ -426,7 +443,10 @@ impl<S: Read + Seek + Write> Pkg<S> {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn insert(&mut self, path: String, flags: Flags) -> Result<EntryWriter<S>, InsertError> {
-        let handle = self.driver.drive_write(self.state.insert(path, flags))??;
+        let handle = self
+            .driver
+            .drive_write(self.state.insert(path, flags))
+            .flatten()?;
 
         Ok(EntryWriter {
             driver: &mut self.driver,
@@ -451,6 +471,6 @@ impl<S: Read + Seek + Write + Truncate> Pkg<S> {
     ///
     /// [`insert`]: Pkg::insert
     pub fn repack(&mut self) -> Result<(), RepackError> {
-        self.driver.drive_truncate(self.state.repack())?
+        self.driver.drive_truncate(self.state.repack()).flatten()
     }
 } // Read + Seek + Write + Truncate
