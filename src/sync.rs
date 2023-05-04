@@ -331,9 +331,6 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
         match self.handle.inner_mut() {
             InnerInsertHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
             InnerInsertHandle::Deflate(_) => Err(std::io::Error::new(
-                #[cfg(feature = "io_error_more")]
-                std::io::ErrorKind::NotSeekable,
-                #[cfg(not(feature = "io_error_more"))]
                 std::io::ErrorKind::Other,
                 "Cannot read on compressed entry writer",
             )),
