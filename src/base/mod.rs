@@ -3,8 +3,6 @@ use alloc::{string::String, vec::Vec};
 use std::io::SeekFrom as StdSeekFrom;
 
 use hashbrown::HashMap;
-use thiserror::Error;
-
 pub enum SeekFrom {
     Start(u64),
     End(i64),
@@ -29,23 +27,6 @@ impl From<SeekFrom> for StdSeekFrom {
             SeekFrom::Start(s) => StdSeekFrom::Start(s),
             SeekFrom::End(e) => StdSeekFrom::End(e),
             SeekFrom::Current(c) => StdSeekFrom::Current(c),
-        }
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum SeekError {
-    #[error("{0}")]
-    InvalidInput(String),
-}
-
-#[cfg(feature = "std")]
-impl From<SeekError> for std::io::Error {
-    fn from(val: SeekError) -> std::io::Error {
-        match val {
-            SeekError::InvalidInput(msg) => {
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
-            }
         }
     }
 }
@@ -227,6 +208,7 @@ macro_rules! request {
 }
 
 bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy)]
     struct RawFlags: u32 {
         const DEFLATED = 1 << 24;
     }
@@ -259,6 +241,14 @@ impl EntryCompression {
 }
 
 #[derive(Debug, Clone)]
+pub struct EntryInfo {
+    pub index: usize,
+    pub compressed_size: u32,
+    pub uncompressed_size: u32,
+    pub compression: EntryCompression,
+}
+
+#[derive(Debug, Clone)]
 struct Entry {
     path_hash: u32,
     relative_path_offset: u32,
@@ -273,7 +263,7 @@ struct Entry {
 impl Entry {
     #[generator(static, yield WriteRequest -> Response)]
     fn write(&self) -> () {
-        let path_offset_and_flags: u32 = self.relative_path_offset | self.flags.bits;
+        let path_offset_and_flags: u32 = self.relative_path_offset | self.flags.bits();
 
         request!(write u32 be self.path_hash);
         request!(write u32 be path_offset_and_flags);

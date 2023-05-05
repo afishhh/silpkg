@@ -90,12 +90,21 @@ struct Compress {
     compression_level: u32,
 }
 
+#[derive(clap::Args)]
+/// Rename a file in an archive
+struct Rename {
+    pkg: PathBuf,
+    source: String,
+    destination: String,
+}
+
 #[derive(clap::Subcommand)]
 enum Command {
     List(List),
     Extract(Extract),
     Add(Add),
     Compress(Compress),
+    Rename(Rename),
 }
 
 #[derive(Parser)]
@@ -289,6 +298,11 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
             bar.finish();
 
             pkg.repack()?;
+        }
+        Command::Rename(opts) => {
+            let mut pkg = pkg_open_rw(&opts.pkg)?;
+
+            pkg.rename(&opts.source, opts.destination)?;
         }
     }
 

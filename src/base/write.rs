@@ -1,8 +1,4 @@
-use alloc::{
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::{string::String, vec, vec::Vec};
 use core::cmp::Ordering;
 
 use flate2::Compress;
@@ -18,8 +14,8 @@ use crate::{
 };
 
 use super::{
-    CreateError, Entry, InsertError, ReadSeekRequest, ReadSeekWriteTruncateRequest, RemoveError,
-    RenameError, RepackError, ReplaceError, SeekError,
+    CreateError, Entry, InsertError, RawReadWriteHandle, ReadSeekWriteTruncateRequest, RemoveError,
+    RenameError, RepackError, ReplaceError,
 };
 
 const PREALLOCATED_PATH_LEN: u64 = 30;
@@ -374,7 +370,7 @@ impl PkgState {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn insert(&mut self, path: String, flags: Flags) -> Result<InsertHandle, InsertError> {
+    pub fn insert(&mut self, path: String, flags: Flags) -> Result<WriteHandle, InsertError> {
         if self.path_to_entry_index_map.contains_key(&path) {
             return Err(InsertError::AlreadyExists);
         }
@@ -396,17 +392,15 @@ impl PkgState {
         let relative_path_offset = self.insert_path_into_path_region(&path).await;
         let data_offset = request!(seek SeekFrom::End(0));
 
-        Ok(InsertHandle {
+        Ok(WriteHandle {
             inner: match flags.compression {
-                EntryCompression::Deflate(level) => {
-                    InnerInsertHandle::Deflate(DeflateInsertHandle {
-                        offset: data_offset,
-                        size: 0,
-                        unpacked_size: 0,
-                        compress: Compress::new(level, true),
-                    })
-                }
-                EntryCompression::None => InnerInsertHandle::Raw(RawInsertHandle {
+                EntryCompression::Deflate(level) => InnerWriteHandle::Deflate(DeflateWriteHandle {
+                    offset: data_offset,
+                    size: 0,
+                    unpacked_size: 0,
+                    compress: Compress::new(level, true),
+                }),
+                EntryCompression::None => InnerWriteHandle::Raw(RawReadWriteHandle {
                     cursor: 0,
                     offset: data_offset,
                     size: 0,
@@ -422,14 +416,7 @@ impl PkgState {
     }
 }
 
-pub struct RawInsertHandle {
-    // Used during data IO
-    cursor: u64,
-    offset: u64,
-    size: u64,
-}
-
-pub struct DeflateInsertHandle {
+pub struct DeflateWriteHandle {
     // Used during data IO
     offset: u64,
     size: u64,
@@ -437,13 +424,13 @@ pub struct DeflateInsertHandle {
     compress: flate2::Compress,
 }
 
-pub enum InnerInsertHandle {
-    Raw(RawInsertHandle),
-    Deflate(DeflateInsertHandle),
+pub enum InnerWriteHandle {
+    Raw(RawReadWriteHandle),
+    Deflate(DeflateWriteHandle),
 }
 
-pub struct InsertHandle<'a> {
-    inner: InnerInsertHandle,
+pub struct WriteHandle<'a> {
+    inner: InnerWriteHandle,
 
     // Used during flush
     state: &'a mut PkgState,
@@ -453,27 +440,28 @@ pub struct InsertHandle<'a> {
     flags: Flags,
 }
 
-impl<'a, 'b: 'a> InsertHandle<'b> {
-    pub fn inner_mut(&mut self) -> &mut InnerInsertHandle {
+impl<'a, 'b: 'a> WriteHandle<'b> {
+    pub fn inner_mut(&mut self) -> &mut InnerWriteHandle {
         &mut self.inner
     }
 
+    // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
     fn flush_internal(&mut self) -> core::marker::PhantomData<&'b u64> {
         match &mut self.inner {
-            InnerInsertHandle::Deflate(deflate) => deflate.flush().await,
+            InnerWriteHandle::Deflate(deflate) => deflate.flush().await,
             _ => (),
         }
 
         log::trace!("Updating entry {} with written data", self.entry_slot);
 
         let entry = match self.inner {
-            InnerInsertHandle::Raw(RawInsertHandle {
+            InnerWriteHandle::Raw(RawReadWriteHandle {
                 offset,
                 size: unpacked_size @ size,
                 ..
             })
-            | InnerInsertHandle::Deflate(DeflateInsertHandle {
+            | InnerWriteHandle::Deflate(DeflateWriteHandle {
                 offset,
                 size,
                 unpacked_size,
@@ -505,8 +493,8 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
     pub fn flush(&mut self) -> core::marker::PhantomData<&'b u64> {
         let (offset, cursor) = match self.inner {
-            InnerInsertHandle::Raw(RawInsertHandle { cursor, offset, .. })
-            | InnerInsertHandle::Deflate(DeflateInsertHandle {
+            InnerWriteHandle::Raw(RawReadWriteHandle { cursor, offset, .. })
+            | InnerWriteHandle::Deflate(DeflateWriteHandle {
                 size: cursor,
                 offset,
                 ..
@@ -525,8 +513,7 @@ impl<'a, 'b: 'a> InsertHandle<'b> {
     }
 }
 
-impl RawInsertHandle {
-    // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
+impl RawReadWriteHandle {
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
     pub fn write(&mut self, buf: &[u8]) -> usize {
         log::trace!("Writing entry data to {}", self.offset);
@@ -537,47 +524,9 @@ impl RawInsertHandle {
 
         written
     }
-
-    #[generator(static, yield ReadSeekRequest -> Response)]
-    pub fn read(&mut self, buffer: &mut [u8]) -> usize {
-        let end = (self.cursor + buffer.len() as u64).min(self.size);
-        let count = end - self.cursor;
-        let value = request!(read count);
-        buffer[..value.len()].copy_from_slice(&value);
-        self.cursor += count;
-        value.len()
-    }
-
-    // FIXME: This piece of code is duplicated in ExtractHandle.
-    #[generator(static, yield ReadSeekRequest -> Response)]
-    pub fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
-        match seekfrom {
-            SeekFrom::Start(start) => {
-                request!(seek SeekFrom::Start(self.offset + start));
-                Ok(start)
-            }
-            SeekFrom::End(end) => {
-                match self.size.checked_add_signed(end).map(|x| x + self.offset) {
-                    Some(off) => {
-                        request!(seek SeekFrom::Start(off));
-                        Ok(off - self.offset)
-                    }
-                    None => Err(SeekError::InvalidInput("seek before zero".to_string())),
-                }
-            }
-            SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
-                Some(off) => {
-                    request!(seek SeekFrom::Start(self.offset + off));
-                    Ok(off)
-                }
-                None => Err(SeekError::InvalidInput("seek before zero".to_string())),
-            },
-        }
-    }
 }
 
-impl DeflateInsertHandle {
-    // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
+impl DeflateWriteHandle {
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
     pub fn write(&mut self, mut buf: &[u8]) -> usize {
         log::trace!("Writing compressed entry data at {}", self.offset);
@@ -628,7 +577,7 @@ impl DeflateInsertHandle {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn flush(&mut self) -> () {
+    pub fn flush(&mut self) {
         let mut out = Vec::with_capacity(BUFFER_SIZE as usize);
 
         loop {
@@ -645,5 +594,18 @@ impl DeflateInsertHandle {
                 out.clear();
             }
         }
+    }
+}
+
+impl WriteHandle<'_> {
+    pub fn is_compressed(&self) -> bool {
+        match self.inner {
+            InnerWriteHandle::Raw(_) => true,
+            InnerWriteHandle::Deflate(_) => false,
+        }
+    }
+
+    pub fn is_seekable(&self) -> bool {
+        !self.is_compressed()
     }
 }

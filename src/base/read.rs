@@ -1,7 +1,4 @@
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 
 use flate2::Decompress;
 use hashbrown::HashMap;
@@ -80,8 +77,8 @@ pub fn parse(expect_magic: bool) -> Result<PkgState, ParseError> {
         let path_offset_and_flags = read[4..8].as_u32_be();
         let path_offset = path_offset_and_flags & 0x00FFFFFF;
         let flag_bits = path_offset_and_flags & 0xFF000000;
-        let flags = RawFlags::from_bits(flag_bits)
-            .ok_or_else(|| ParseError::UnrecognisedEntryFlags(flag_bits))?;
+        let flags =
+            RawFlags::from_bits(flag_bits).ok_or(ParseError::UnrecognisedEntryFlags(flag_bits))?;
 
         let data_offset = read[8..12].as_u32_be();
         let data_size = read[12..16].as_u32_be();
@@ -135,13 +132,13 @@ pub fn parse(expect_magic: bool) -> Result<PkgState, ParseError> {
     })
 }
 
-pub struct RawExtractHandle {
-    offset: u64,
-    cursor: u64,
-    size: u64,
+pub struct RawReadWriteHandle {
+    pub(super) offset: u64,
+    pub(super) cursor: u64,
+    pub(super) size: u64,
 }
 
-pub struct DeflateExtractHandle {
+pub struct DeflateReadHandle {
     offset: u64,
     cursor: u64,
     size: u64,
@@ -150,13 +147,13 @@ pub struct DeflateExtractHandle {
     done: bool,
 }
 
-pub enum ExtractHandle {
-    Raw(RawExtractHandle),
-    Deflate(DeflateExtractHandle),
+pub enum ReadHandle {
+    Raw(RawReadWriteHandle),
+    Deflate(DeflateReadHandle),
 }
 
 #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ExtractHandle, OpenError> {
+pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ReadHandle, OpenError> {
     let entry = state.entries[match state.path_to_entry_index_map.get(path) {
         Some(index) => *index,
         None => return Err(OpenError::NotFound),
@@ -167,7 +164,7 @@ pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ExtractHa
     request!(seek SeekFrom::Start(entry.data_offset as u64));
 
     Ok(if entry.flags.contains(RawFlags::DEFLATED) {
-        ExtractHandle::Deflate(DeflateExtractHandle {
+        ReadHandle::Deflate(DeflateReadHandle {
             offset: entry.data_offset.into(),
             cursor: 0,
             size: entry.data_size.into(),
@@ -175,7 +172,7 @@ pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ExtractHa
             done: false,
         })
     } else {
-        ExtractHandle::Raw(RawExtractHandle {
+        ReadHandle::Raw(RawReadWriteHandle {
             offset: entry.data_offset.into(),
             cursor: 0,
             size: entry.data_size.into(),
@@ -183,7 +180,7 @@ pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ExtractHa
     })
 }
 
-impl RawExtractHandle {
+impl RawReadWriteHandle {
     #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
     pub fn read<'coro>(&'coro mut self, buffer: &'coro mut [u8]) -> usize {
         let end = (self.cursor + buffer.len() as u64).min(self.size);
@@ -207,7 +204,7 @@ impl RawExtractHandle {
                         request!(seek SeekFrom::Start(off));
                         Ok(off - self.offset)
                     }
-                    None => Err(SeekError::InvalidInput("seek overflowed".to_string())),
+                    None => Err(SeekError::SeekOutOfBounds),
                 }
             }
             SeekFrom::Current(off) => match self.cursor.checked_add_signed(off) {
@@ -215,13 +212,13 @@ impl RawExtractHandle {
                     request!(seek SeekFrom::Start(self.offset + off));
                     Ok(off)
                 }
-                None => Err(SeekError::InvalidInput("seek overflowed".to_string())),
+                None => Err(SeekError::SeekOutOfBounds),
             },
         }
     }
 }
 
-impl DeflateExtractHandle {
+impl DeflateReadHandle {
     #[generator(static, yield ReadSeekRequest -> Response)]
     pub fn read(&mut self, mut buffer: &mut [u8]) -> usize {
         if self.done {
@@ -273,5 +270,18 @@ impl DeflateExtractHandle {
         }
 
         read
+    }
+}
+
+impl ReadHandle {
+    pub fn is_compressed(&self) -> bool {
+        match self {
+            ReadHandle::Raw(_) => true,
+            ReadHandle::Deflate(_) => false,
+        }
+    }
+
+    pub fn is_seekable(&self) -> bool {
+        !self.is_compressed()
     }
 }

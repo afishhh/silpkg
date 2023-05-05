@@ -152,8 +152,8 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
         let mut generics = func.sig.generics;
         let mut args = func.sig.inputs;
         let return_type = match func.sig.output {
-            syn::ReturnType::Default => unit_type.clone(),
-            syn::ReturnType::Type(_, tp) => *tp,
+            syn::ReturnType::Default => &unit_type,
+            syn::ReturnType::Type(_, ref tp) => tp,
         };
 
         let coro_lifetime = match input.as_ref().and_then(|x| x.lifetime.clone()) {

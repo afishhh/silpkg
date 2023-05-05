@@ -40,18 +40,23 @@
 extern crate alloc;
 
 /// Defines all the errors used by this library.
-///
-/// # no_std
-/// Note that the `Io` variants are not included in `no_std` environments.
 pub mod errors;
 
+/// The low-level generator-based API that can be used when the high-level variants are not enough.
+#[cfg(feature = "unstable_base")]
+pub mod base;
+#[cfg(not(feature = "unstable_base"))]
 mod base;
+
 mod util;
 
 /// A synchronous interface for reading and writing PKG archives.
 #[cfg(feature = "std")]
 #[doc(cfg(feature = "std"))]
 pub mod sync;
+
+/// An interface for reading and writing in-memory PKG archives.
+pub mod slice;
 
 pub use base::{Compression, EntryCompression, Flags};
 #[cfg(feature = "std")]

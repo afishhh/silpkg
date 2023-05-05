@@ -12,11 +12,12 @@ description = "A library for working with SIL PKG archives"
 [features]
 default = ["std"]
 std = ["log/std", "thiserror/std"]
+unstable_base = []
 
 [dependencies]
 # TODO: Make deflate support optional
 flate2 = { version = "1.0" } #, features = ["zlib-ng"], default-features = false }
-bitflags = "1"
+bitflags = "2"
 log = { version = "0.4", default-features = false }
 thiserror = { package = "thiserror-core", version = "1", default-features = false }
 # no_std hashmap

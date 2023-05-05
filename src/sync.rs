@@ -9,7 +9,7 @@ use base::FlattenResult;
 
 use crate::{
     base::{
-        self, Flags, InnerInsertHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
+        self, EntryInfo, Flags, InnerWriteHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
         ReadSeekWriteTruncateRequest, Response, WriteRequest,
     },
     errors,
@@ -27,7 +27,6 @@ type ReplaceError = errors::ReplaceError<std::io::Error>;
 
 /// A trait for objects that can be truncated.
 pub trait Truncate {
-    // FIXME: Should this be i64 instead?
     /// Truncates this object to the given length.
     fn truncate(&mut self, len: u64) -> std::io::Result<()>;
 }
@@ -187,14 +186,14 @@ pub struct Pkg<S: Read + Seek> {
 /// A reader that allows reading a single entry from a [`Pkg`]
 pub struct EntryReader<'a, S: Read + Seek> {
     driver: &'a mut SyncDriver<S>,
-    handle: base::ExtractHandle,
+    handle: base::ReadHandle,
 }
 
 impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match &mut self.handle {
-            base::ExtractHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
-            base::ExtractHandle::Deflate(handle) => self.driver.drive_read(handle.read(buf)),
+            base::ReadHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
+            base::ReadHandle::Deflate(handle) => self.driver.drive_read(handle.read(buf)),
         }
     }
 }
@@ -210,11 +209,11 @@ impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
 impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match &mut self.handle {
-            base::ExtractHandle::Raw(handle) => {
-                Ok(self.driver.drive_read(handle.seek(pos.into()))??)
+            base::ReadHandle::Raw(handle) => {
+                Ok(self.driver.drive_read(handle.seek(pos.into())).flatten()?)
             }
             // FIXME: Should this really work like this?
-            base::ExtractHandle::Deflate(_) => Err(std::io::Error::new(
+            base::ReadHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
                 #[cfg(not(feature = "io_error_more"))]
@@ -226,6 +225,10 @@ impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
 }
 
 impl<S: Read + Seek> Pkg<S> {
+    pub fn inner(&self) -> &S {
+        &self.driver.storage
+    }
+
     /// Checks whether the archive contains `path`.
     pub fn contains(&self, path: &str) -> bool {
         self.state.contains(path)
@@ -297,7 +300,7 @@ impl<S: Read + Seek> Pkg<S> {
 /// A writer that allows writing a single entry into a [`Pkg`].
 pub struct EntryWriter<'a, S: Read + Seek + Write> {
     driver: &'a mut SyncDriver<S>,
-    handle: ManuallyDrop<base::InsertHandle<'a>>,
+    handle: ManuallyDrop<base::WriteHandle<'a>>,
 }
 
 impl<'a, S: Read + Seek + Write> EntryWriter<'a, S> {
@@ -315,8 +318,8 @@ impl<'a, S: Read + Seek + Write> EntryWriter<'a, S> {
 impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
-            InnerInsertHandle::Deflate(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
+            InnerWriteHandle::Raw(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
+            InnerWriteHandle::Deflate(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
         }
     }
 
@@ -329,8 +332,8 @@ impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
 impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
-            InnerInsertHandle::Deflate(_) => Err(std::io::Error::new(
+            InnerWriteHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
+            InnerWriteHandle::Deflate(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Cannot read on compressed entry writer",
             )),
@@ -349,10 +352,10 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
 impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match self.handle.inner_mut() {
-            InnerInsertHandle::Raw(handle) => {
-                Ok(self.driver.drive_read(handle.seek(pos.into()))??)
+            InnerWriteHandle::Raw(handle) => {
+                Ok(self.driver.drive_read(handle.seek(pos.into())).flatten()?)
             }
-            InnerInsertHandle::Deflate(_) => Err(std::io::Error::new(
+            InnerWriteHandle::Deflate(_) => Err(std::io::Error::new(
                 #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
                 #[cfg(not(feature = "io_error_more"))]

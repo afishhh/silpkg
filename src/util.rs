@@ -206,6 +206,8 @@ pub trait ByteSliceExt {
         as_u32_be -> u32;
         as_u64_be -> u64;
     }
+
+    fn short_slice(&self, start: usize, count: usize) -> &[u8];
 }
 
 macro_rules! define_as_methods {
@@ -238,5 +240,9 @@ impl ByteSliceExt for [u8] {
         be as_u16_be -> u16;
         be as_u32_be -> u32;
         be as_u64_be -> u64;
+    }
+
+    fn short_slice(&self, start: usize, count: usize) -> &[u8] {
+        &self[start..std::cmp::min(start + count, self.len())]
     }
 }

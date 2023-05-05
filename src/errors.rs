@@ -125,6 +125,45 @@ pub enum OpenError<Io: Error = Infallible> {
     Io(#[from] Io),
 }
 
+/// An error triggered when calling `read` on an [`EntryReader`] or [`EntryWriter`]
+///
+/// [`EntryReader`]: crate::slice::EntryReader
+/// [`EntryWriter`]: crate::slice::EntryWriter
+#[derive(Debug, Error)]
+pub enum ReadError<Io: Error = Infallible> {
+    /// A read was performed on an EntryWriter that does not support reads.
+    ///
+    /// Currently this only occurs when a read is attempted on a deflate compressed entry writer.
+    #[error("Not readable")]
+    NotReadable,
+
+    #[cfg(feature = "std")]
+    #[error(transparent)]
+    /// An IO error occurred.
+    Io(#[from] Io),
+}
+
+/// An error triggered when calling `seek` on an [`EntryReader`] or [`EntryWriter`]
+///
+/// [`EntryReader`]: crate::slice::EntryReader
+/// [`EntryWriter`]: crate::slice::EntryWriter
+#[derive(Debug, Error)]
+pub enum SeekError<Io: Error = Infallible> {
+    /// Seek before zero
+    #[error("Seek out of bounds")]
+    SeekOutOfBounds,
+    /// Reader/Writer does not support seeking.
+    ///
+    /// This occurs when trying to seek on a compressed entry reader/writer.
+    #[error("Not seekable")]
+    NotSeekable,
+
+    #[cfg(feature = "std")]
+    #[error(transparent)]
+    /// An IO error occurred.
+    Io(#[from] Io),
+}
+
 /// An error triggered while repacking.
 #[derive(Debug, Error)]
 pub enum RepackError<Io: Error = Infallible> {
@@ -142,29 +181,29 @@ pub enum RepackError<Io: Error = Infallible> {
 }
 
 #[cfg(feature = "std")]
-impl From<CreateError<std::io::Error>> for std::io::Error {
-    fn from(val: CreateError<std::io::Error>) -> Self {
+impl<E: Error + Into<std::io::Error>> From<CreateError<E>> for std::io::Error {
+    fn from(val: CreateError<E>) -> Self {
         match val {
-            CreateError::Io(err) => err,
+            CreateError::Io(err) => err.into(),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl From<RemoveError<std::io::Error>> for std::io::Error {
-    fn from(value: RemoveError<std::io::Error>) -> Self {
+impl<E: Error + Into<std::io::Error>> From<RemoveError<E>> for std::io::Error {
+    fn from(value: RemoveError<E>) -> Self {
         match value {
             RemoveError::NotFound => {
                 std::io::Error::new(std::io::ErrorKind::NotFound, value.to_string())
             }
-            RemoveError::Io(err) => err,
+            RemoveError::Io(err) => err.into(),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl From<RenameError<std::io::Error>> for std::io::Error {
-    fn from(val: RenameError<std::io::Error>) -> Self {
+impl<E: Error + Into<std::io::Error>> From<RenameError<E>> for std::io::Error {
+    fn from(val: RenameError<E>) -> Self {
         match val {
             RenameError::NotFound => {
                 std::io::Error::new(std::io::ErrorKind::NotFound, val.to_string())
@@ -172,31 +211,62 @@ impl From<RenameError<std::io::Error>> for std::io::Error {
             RenameError::AlreadyExists => {
                 std::io::Error::new(std::io::ErrorKind::AlreadyExists, val.to_string())
             }
-            RenameError::Io(err) => err,
+            RenameError::Io(err) => err.into(),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl From<InsertError<std::io::Error>> for std::io::Error {
-    fn from(val: InsertError<std::io::Error>) -> Self {
+impl<E: Error + Into<std::io::Error>> From<InsertError<E>> for std::io::Error {
+    fn from(val: InsertError<E>) -> Self {
         match val {
             InsertError::AlreadyExists => {
                 std::io::Error::new(std::io::ErrorKind::AlreadyExists, val.to_string())
             }
-            InsertError::Io(err) => err,
+            InsertError::Io(err) => err.into(),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl From<OpenError<std::io::Error>> for std::io::Error {
-    fn from(val: OpenError<std::io::Error>) -> Self {
+impl<E: Error + Into<std::io::Error>> From<OpenError<E>> for std::io::Error {
+    fn from(val: OpenError<E>) -> Self {
         match val {
             OpenError::NotFound => {
                 std::io::Error::new(std::io::ErrorKind::NotFound, val.to_string())
             }
-            OpenError::Io(err) => err,
+            OpenError::Io(err) => err.into(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<E: Error + Into<std::io::Error>> From<ReadError<E>> for std::io::Error {
+    fn from(val: ReadError<E>) -> Self {
+        match val {
+            ReadError::NotReadable => {
+                std::io::Error::new(std::io::ErrorKind::Other, "Not readable")
+            }
+            ReadError::Io(err) => err.into(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl<E: Error + Into<std::io::Error>> From<SeekError<E>> for std::io::Error {
+    fn from(val: SeekError<E>) -> std::io::Error {
+        match val {
+            SeekError::SeekOutOfBounds => {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Seek out of bounds")
+            }
+            SeekError::NotSeekable => std::io::Error::new(
+                #[cfg(feature = "io_error_more")]
+                std::io::ErrorKind::NotSeekable,
+                #[cfg(not(feature = "io_error_more"))]
+                std::io::ErrorKind::Other,
+                "Cannot read on compressed entry writer",
+            ),
+            SeekError::Io(err) => err.into(),
         }
     }
 }
@@ -241,7 +311,8 @@ impl<T, E: Error> FlattenResult<T, CreateError<E>>
         match self {
             Ok(o) => match o {
                 Ok(o) => Ok(o),
-                #[allow(unreachable_code)] // This is a lot cleaner as a match
+                // This is a lot cleaner as a match
+                #[allow(unreachable_code)]
                 Err(e) => Err(match e {
                     CreateError::Io(_) => unreachable!(),
                 }),
@@ -335,6 +406,37 @@ impl<T, E: Error> FlattenResult<T, OpenError<E>> for Result<Result<T, OpenError<
     }
 }
 
+impl<T, E: Error> FlattenResult<T, ReadError<E>> for Result<Result<T, ReadError<Infallible>>, E> {
+    fn flatten(self) -> Result<T, ReadError<E>> {
+        match self {
+            Ok(o) => match o {
+                Ok(o) => Ok(o),
+                Err(e) => Err(match e {
+                    ReadError::NotReadable => ReadError::NotReadable,
+                    ReadError::Io(_) => unreachable!(),
+                }),
+            },
+            Err(e) => Err(ReadError::Io(e)),
+        }
+    }
+}
+
+impl<T, E: Error> FlattenResult<T, SeekError<E>> for Result<Result<T, SeekError<Infallible>>, E> {
+    fn flatten(self) -> Result<T, SeekError<E>> {
+        match self {
+            Ok(o) => match o {
+                Ok(o) => Ok(o),
+                Err(e) => Err(match e {
+                    SeekError::SeekOutOfBounds => SeekError::SeekOutOfBounds,
+                    SeekError::NotSeekable => SeekError::NotSeekable,
+                    SeekError::Io(_) => unreachable!(),
+                }),
+            },
+            Err(e) => Err(SeekError::Io(e)),
+        }
+    }
+}
+
 impl<T, E: Error> FlattenResult<T, RepackError<E>>
     for Result<Result<T, RepackError<Infallible>>, E>
 {
@@ -342,7 +444,6 @@ impl<T, E: Error> FlattenResult<T, RepackError<E>>
         match self {
             Ok(o) => match o {
                 Ok(o) => Ok(o),
-                #[allow(unreachable_code)] // This is a lot cleaner as a match
                 Err(e) => Err(match e {
                     RepackError::OverlappingEntries => RepackError::OverlappingEntries,
                     RepackError::Io(_) => unreachable!(),
