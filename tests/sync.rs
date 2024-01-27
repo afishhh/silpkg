@@ -41,7 +41,7 @@ fn extract<'a, S: Read + Seek + Write>(
     }
 }
 
-fn list<'a, S: Read + Seek + Write>(pkg: &mut Pkg<S>, paths: impl Iterator<Item = &'a str>) {
+fn list<'a, S: Read + Seek + Write>(pkg: &Pkg<S>, paths: impl Iterator<Item = &'a str>) {
     let mut list_paths = pkg.paths().map(String::as_str).collect::<HashSet<_>>();
 
     for name in paths {
@@ -74,7 +74,7 @@ fn add_extract() {
         data.iter().map(|(n, d)| (n.as_str(), d.as_slice())),
     );
 
-    list(&mut pkg, data.iter().map(|(n, _)| n.as_str()));
+    list(&pkg, data.iter().map(|(n, _)| n.as_str()));
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn add_repack_extract() {
         data.iter().map(|(n, d)| (n.as_str(), d.as_slice())),
     );
 
-    list(&mut pkg, data.iter().map(|(n, _)| n.as_str()));
+    list(&pkg, data.iter().map(|(n, _)| n.as_str()));
 }
 
 #[test]
@@ -117,11 +117,11 @@ fn add_parse_extract() {
         data.iter().map(|(n, d)| (n.as_str(), d.as_slice())),
     );
 
-    list(&mut pkg, data.iter().map(|(n, _)| n.as_str()));
+    list(&pkg, data.iter().map(|(n, _)| n.as_str()));
 }
 
 #[test]
-fn add_parse_repack_extract() {
+fn add_repack_parse_extract_extract() {
     let mut storage = std::io::Cursor::new(vec![]);
     let mut pkg = Pkg::create(&mut storage).unwrap();
     let data: Vec<(String, Vec<u8>)> = data::combined_data().collect();
@@ -133,6 +133,8 @@ fn add_parse_repack_extract() {
     );
 
     pkg.repack().unwrap();
+    pkg.flush().unwrap();
+    drop(pkg);
     let mut pkg = Pkg::parse(&mut storage).unwrap();
 
     extract(
@@ -155,6 +157,31 @@ fn add_compressed_repack_extract() {
     );
 
     pkg.repack().unwrap();
+
+    extract(
+        &mut pkg,
+        data.iter().map(|(n, d)| (n.as_str(), d.as_slice())),
+    );
+}
+
+#[test]
+fn add_compressed_repack_parse_extract() {
+    let mut storage = vec![];
+    let mut pkg = Pkg::create(std::io::Cursor::new(&mut storage)).unwrap();
+    let data: Vec<(String, Vec<u8>)> = data::combined_data().collect();
+
+    add(
+        &mut pkg,
+        silpkg::Flags {
+            compression: silpkg::EntryCompression::Deflate(Compression::best()),
+        },
+        data.iter().map(|(n, d)| (n.to_string(), d.as_slice())),
+    );
+
+    pkg.repack().unwrap();
+    pkg.flush().unwrap();
+    drop(pkg);
+    let mut pkg = Pkg::parse(std::io::Cursor::new(&mut storage)).unwrap();
 
     extract(
         &mut pkg,
