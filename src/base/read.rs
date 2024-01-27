@@ -6,13 +6,13 @@ use crate::base::BUFFER_SIZE;
 use super::{OpenError, PkgState, RawFlags, ReadSeekRequest, Response, SeekError, SeekFrom};
 
 pub trait GeneratorRead {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn read<'coro>(&'coro mut self, buffer: &'coro mut [u8]) -> usize;
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn read(&mut self, buffer: &mut [u8]) -> usize;
 }
 
 pub trait GeneratorSeek {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn seek<'coro>(&'coro mut self, seekfrom: SeekFrom) -> Result<u64, SeekError>;
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError>;
 }
 
 pub struct RawReadWriteHandle {
@@ -35,8 +35,8 @@ pub enum ReadHandle {
     Deflate(DeflateReadHandle),
 }
 
-#[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ReadHandle, OpenError> {
+#[generator(static, yield ReadSeekRequest -> Response)]
+pub fn open(state: &PkgState, path: &str) -> Result<ReadHandle, OpenError> {
     let entry = state.entries[match state.path_to_entry_index_map.get(path) {
         Some(index) => *index,
         None => return Err(OpenError::NotFound),
@@ -64,8 +64,8 @@ pub fn open<'coro>(state: &'coro PkgState, path: &'coro str) -> Result<ReadHandl
 }
 
 impl GeneratorRead for RawReadWriteHandle {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn read<'coro>(&'coro mut self, buffer: &'coro mut [u8]) -> usize {
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn read(&mut self, buffer: &mut [u8]) -> usize {
         let end = (self.cursor + buffer.len() as u64).min(self.size);
         let count = end - self.cursor;
         let value = request!(read count);
@@ -76,8 +76,8 @@ impl GeneratorRead for RawReadWriteHandle {
 }
 
 impl GeneratorSeek for RawReadWriteHandle {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn seek<'coro>(&'coro mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match seekfrom {
             SeekFrom::Start(start) => {
                 request!(seek SeekFrom::Start(self.offset + start));
@@ -159,8 +159,8 @@ impl GeneratorRead for DeflateReadHandle {
 }
 
 impl GeneratorRead for ReadHandle {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn read<'coro>(&'coro mut self, buffer: &'coro mut [u8]) -> usize {
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn read(&mut self, buffer: &mut [u8]) -> usize {
         match self {
             ReadHandle::Raw(h) => h.read(buffer).await,
             ReadHandle::Deflate(h) => h.read(buffer).await,
@@ -169,8 +169,8 @@ impl GeneratorRead for ReadHandle {
 }
 
 impl GeneratorSeek for ReadHandle {
-    #[generator(static, yield ReadSeekRequest -> Response, lifetime 'coro)]
-    fn seek<'coro>(&'coro mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
+    #[generator(static, yield ReadSeekRequest -> Response)]
+    fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match self {
             ReadHandle::Raw(h) => h.seek(seekfrom).await,
             ReadHandle::Deflate(_) => Err(SeekError::NotSeekable),

@@ -1,5 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
-use core::cmp::Ordering;
+use core::{cmp::Ordering, marker::PhantomData};
 
 use flate2::Compress;
 use hashbrown::HashMap;
@@ -141,8 +141,8 @@ impl PkgState {
         request!(write u32 be self.entries.len() as u32);
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'coro)]
-    pub fn insert_path_into_path_region<'coro>(&mut self, path: &'coro str) -> u32 {
+    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    pub fn insert_path_into_path_region(&mut self, path: &str) -> u32 {
         log::trace!(target: "silpkg",
             "Inserting path {path} at {}/{}",
             self.path_region_empty_offset, self.path_region_size
@@ -456,7 +456,7 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
 
     // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    fn flush_internal(&mut self) -> core::marker::PhantomData<&'b u64> {
+    fn flush_internal(&mut self) -> PhantomData<&'b ()> {
         match &mut self.inner {
             DataWriteHandle::Deflate(deflate) => deflate.flush().await,
             _ => (),
@@ -500,7 +500,7 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
     }
 
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    pub fn flush(&mut self) -> core::marker::PhantomData<&'b u64> {
+    pub fn flush(&mut self) -> PhantomData<&'b ()> {
         let (offset, cursor) = match self.inner {
             DataWriteHandle::Raw(RawReadWriteHandle { cursor, offset, .. })
             | DataWriteHandle::Deflate(DeflateWriteHandle {
@@ -516,7 +516,7 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
         Default::default()
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'b)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
     pub fn finish(mut self) {
         self.flush_internal().await;
     }
