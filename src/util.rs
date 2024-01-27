@@ -243,6 +243,6 @@ impl ByteSliceExt for [u8] {
     }
 
     fn short_slice(&self, start: usize, count: usize) -> &[u8] {
-        &self[start..std::cmp::min(start + count, self.len())]
+        &self[start..core::cmp::min(start + count, self.len())]
     }
 }

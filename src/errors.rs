@@ -42,7 +42,6 @@ pub enum ParseError<Io: Error = Infallible> {
     /// The input archive contained two entries with the same path.
     SamePath(String),
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -51,7 +50,6 @@ pub enum ParseError<Io: Error = Infallible> {
 /// An error triggered while creating a new archive.
 #[derive(Debug, Error)]
 pub enum CreateError<Io: Error = Infallible> {
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -64,7 +62,6 @@ pub enum RemoveError<Io: Error = Infallible> {
     /// The target entry was not found.
     NotFound,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -80,7 +77,6 @@ pub enum RenameError<Io: Error = Infallible> {
     /// An entry with the destination path was already present.
     AlreadyExists,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -93,7 +89,6 @@ pub enum ReplaceError<Io: Error = Infallible> {
     /// The source entry was not found.
     NotFound,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -106,7 +101,6 @@ pub enum InsertError<Io: Error = Infallible> {
     /// An entry with that name already existed.
     AlreadyExists,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -119,7 +113,6 @@ pub enum OpenError<Io: Error = Infallible> {
     /// An entry with that name was not found.
     NotFound,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -137,7 +130,6 @@ pub enum ReadError<Io: Error = Infallible> {
     #[error("Not readable")]
     NotReadable,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -158,7 +150,6 @@ pub enum SeekError<Io: Error = Infallible> {
     #[error("Not seekable")]
     NotSeekable,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),
@@ -174,7 +165,6 @@ pub enum RepackError<Io: Error = Infallible> {
     /// archive that contains such overlapping entries and try to repack it.
     OverlappingEntries,
 
-    #[cfg(feature = "std")]
     #[error(transparent)]
     /// An IO error occurred.
     Io(#[from] Io),

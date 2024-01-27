@@ -255,7 +255,6 @@ impl PkgState {
             (Some(_), None) => {
                 self.rename(src, dst).await.map_err(|x| match x {
                     RenameError::NotFound | RenameError::AlreadyExists => unreachable!(),
-                    #[cfg(feature = "std")]
                     RenameError::Io(err) => ReplaceError::Io(err),
                 })?;
 
@@ -286,7 +285,7 @@ impl PkgState {
     #[generator(static, yield ReadSeekWriteTruncateRequest -> Response)]
     pub fn repack(&mut self) -> Result<(), RepackError> {
         // Remove empty entries
-        for entry in std::mem::take(&mut self.entries) {
+        for entry in core::mem::take(&mut self.entries) {
             if entry.is_some() {
                 self.entries.push(entry);
             }
