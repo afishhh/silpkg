@@ -98,7 +98,7 @@ struct Compress {
 }
 
 #[derive(clap::Args)]
-/// Rename a file in an archive
+/// Renames a file in an archive
 struct Rename {
     pkg: PathBuf,
     source: String,
