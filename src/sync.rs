@@ -17,14 +17,14 @@ use crate::{
     util::{ReadSeekWriteExt, WriteExt},
 };
 
-type CreateError = errors::CreateError<std::io::Error>;
-type ParseError = errors::ParseError<std::io::Error>;
-type InsertError = errors::InsertError<std::io::Error>;
-type OpenError = errors::OpenError<std::io::Error>;
-type RemoveError = errors::RemoveError<std::io::Error>;
-type RenameError = errors::RenameError<std::io::Error>;
-type RepackError = errors::RepackError<std::io::Error>;
-type ReplaceError = errors::ReplaceError<std::io::Error>;
+pub type CreateError = errors::CreateError<std::io::Error>;
+pub type ParseError = errors::ParseError<std::io::Error>;
+pub type InsertError = errors::InsertError<std::io::Error>;
+pub type OpenError = errors::OpenError<std::io::Error>;
+pub type RemoveError = errors::RemoveError<std::io::Error>;
+pub type RenameError = errors::RenameError<std::io::Error>;
+pub type RepackError = errors::RepackError<std::io::Error>;
+pub type ReplaceError = errors::ReplaceError<std::io::Error>;
 
 /// A trait for objects that can be truncated.
 pub trait Truncate {
