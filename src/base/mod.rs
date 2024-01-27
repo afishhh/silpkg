@@ -2,7 +2,10 @@ use alloc::{string::String, vec::Vec};
 #[cfg(feature = "std")]
 use std::io::SeekFrom as StdSeekFrom;
 
+use macros::generator;
+
 use hashbrown::HashMap;
+
 pub enum SeekFrom {
     Start(u64),
     End(i64),
@@ -316,8 +319,9 @@ pub use crate::errors::*;
 
 mod common;
 pub use common::*;
+mod parse;
+pub use parse::*;
 mod read;
-use macros::generator;
 pub use read::*;
 mod write;
 pub use write::*;

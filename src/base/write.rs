@@ -398,13 +398,13 @@ impl PkgState {
 
         Ok(WriteHandle {
             inner: match flags.compression {
-                EntryCompression::Deflate(level) => InnerWriteHandle::Deflate(DeflateWriteHandle {
+                EntryCompression::Deflate(level) => DataWriteHandle::Deflate(DeflateWriteHandle {
                     offset: data_offset,
                     size: 0,
                     unpacked_size: 0,
                     compress: Compress::new(level, true),
                 }),
-                EntryCompression::None => InnerWriteHandle::Raw(RawReadWriteHandle {
+                EntryCompression::None => DataWriteHandle::Raw(RawReadWriteHandle {
                     cursor: 0,
                     offset: data_offset,
                     size: 0,
@@ -420,6 +420,11 @@ impl PkgState {
     }
 }
 
+pub trait GeneratorWrite {
+    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    fn write(&mut self, buf: &[u8]) -> usize;
+}
+
 pub struct DeflateWriteHandle {
     // Used during data IO
     offset: u64,
@@ -428,13 +433,13 @@ pub struct DeflateWriteHandle {
     compress: flate2::Compress,
 }
 
-pub enum InnerWriteHandle {
+pub enum DataWriteHandle {
     Raw(RawReadWriteHandle),
     Deflate(DeflateWriteHandle),
 }
 
 pub struct WriteHandle<'a> {
-    inner: InnerWriteHandle,
+    inner: DataWriteHandle,
 
     // Used during flush
     state: &'a mut PkgState,
@@ -445,7 +450,7 @@ pub struct WriteHandle<'a> {
 }
 
 impl<'a, 'b: 'a> WriteHandle<'b> {
-    pub fn inner_mut(&mut self) -> &mut InnerWriteHandle {
+    pub fn inner_mut(&mut self) -> &mut DataWriteHandle {
         &mut self.inner
     }
 
@@ -453,19 +458,19 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
     fn flush_internal(&mut self) -> core::marker::PhantomData<&'b u64> {
         match &mut self.inner {
-            InnerWriteHandle::Deflate(deflate) => deflate.flush().await,
+            DataWriteHandle::Deflate(deflate) => deflate.flush().await,
             _ => (),
         }
 
         log::trace!("Updating entry {} with written data", self.entry_slot);
 
         let entry = match self.inner {
-            InnerWriteHandle::Raw(RawReadWriteHandle {
+            DataWriteHandle::Raw(RawReadWriteHandle {
                 offset,
                 size: unpacked_size @ size,
                 ..
             })
-            | InnerWriteHandle::Deflate(DeflateWriteHandle {
+            | DataWriteHandle::Deflate(DeflateWriteHandle {
                 offset,
                 size,
                 unpacked_size,
@@ -497,8 +502,8 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
     #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
     pub fn flush(&mut self) -> core::marker::PhantomData<&'b u64> {
         let (offset, cursor) = match self.inner {
-            InnerWriteHandle::Raw(RawReadWriteHandle { cursor, offset, .. })
-            | InnerWriteHandle::Deflate(DeflateWriteHandle {
+            DataWriteHandle::Raw(RawReadWriteHandle { cursor, offset, .. })
+            | DataWriteHandle::Deflate(DeflateWriteHandle {
                 size: cursor,
                 offset,
                 ..
@@ -517,9 +522,9 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
     }
 }
 
-impl RawReadWriteHandle {
+impl GeneratorWrite for RawReadWriteHandle {
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn write(&mut self, buf: &[u8]) -> usize {
+    fn write(&mut self, buf: &[u8]) -> usize {
         log::trace!("Writing entry data to {}", self.offset);
 
         let written = request!(write buf);
@@ -530,9 +535,9 @@ impl RawReadWriteHandle {
     }
 }
 
-impl DeflateWriteHandle {
+impl GeneratorWrite for DeflateWriteHandle {
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn write(&mut self, mut buf: &[u8]) -> usize {
+    fn write(&mut self, mut buf: &[u8]) -> usize {
         log::trace!("Writing compressed entry data at {}", self.offset);
 
         let mut output = 0;
@@ -579,7 +584,9 @@ impl DeflateWriteHandle {
 
         written
     }
+}
 
+impl DeflateWriteHandle {
     #[generator(static, yield ReadSeekWriteRequest -> Response)]
     pub fn flush(&mut self) {
         let mut out = Vec::with_capacity(BUFFER_SIZE as usize);
@@ -601,11 +608,21 @@ impl DeflateWriteHandle {
     }
 }
 
+impl GeneratorWrite for WriteHandle<'_> {
+    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    fn write(&mut self, buf: &[u8]) -> usize {
+        match &mut self.inner {
+            DataWriteHandle::Raw(h) => h.write(buf).await,
+            DataWriteHandle::Deflate(h) => h.write(buf).await,
+        }
+    }
+}
+
 impl WriteHandle<'_> {
     pub fn is_compressed(&self) -> bool {
         match self.inner {
-            InnerWriteHandle::Raw(_) => false,
-            InnerWriteHandle::Deflate(_) => true,
+            DataWriteHandle::Raw(_) => false,
+            DataWriteHandle::Deflate(_) => true,
         }
     }
 

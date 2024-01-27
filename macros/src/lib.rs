@@ -193,28 +193,25 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
             )
         };
 
-        let mut body_as_block = syn::parse2::<syn::Block>(func.block.clone()).ok();
-        if let Some(block) = &mut body_as_block {
-            ReplaceCoroutineAwait {
-                resume_type: resume_type.clone(),
-            }
-            .visit_block_mut(block);
-        }
-
-        let maybe_static = input
-            .map(|x| {
-                if x.is_static {
-                    quote!(static)
-                } else {
-                    quote!()
-                }
-            })
-            .unwrap_or(quote!());
-
         let generic_params = generics.params;
         let where_clause = generics.where_clause;
 
-        let new_body = if let Some(block) = body_as_block {
+        let new_body = if let Ok(mut block) = syn::parse2::<syn::Block>(func.block.clone()) {
+            ReplaceCoroutineAwait {
+                resume_type: resume_type.clone(),
+            }
+            .visit_block_mut(&mut block);
+
+            let maybe_static = input
+                .map(|x| {
+                    if x.is_static {
+                        quote!(static)
+                    } else {
+                        quote!()
+                    }
+                })
+                .unwrap_or(quote!());
+
             quote!({
                 #maybe_static move |_: #resume_type| #block
             })
