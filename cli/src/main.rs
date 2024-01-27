@@ -54,6 +54,13 @@ struct Extract {
 }
 
 #[derive(clap::Args)]
+/// Prints a single file from an archive
+struct Cat {
+    pkg: PathBuf,
+    file: String,
+}
+
+#[derive(clap::Args)]
 /// Adds files to an archive or creates a new one if it doesn't exist
 struct Add {
     pkg: PathBuf,
@@ -102,6 +109,7 @@ struct Rename {
 enum Command {
     List(List),
     Extract(Extract),
+    Cat(Cat),
     Add(Add),
     Compress(Compress),
     Rename(Rename),
@@ -165,6 +173,11 @@ fn real_main() -> Result<ExitCode, anyhow::Error> {
                 bar.inc();
             }
             bar.finish();
+        }
+        Command::Cat(Cat { pkg, file }) => {
+            let mut pkg = pkg_open_ro(&pkg)?;
+
+            std::io::copy(&mut pkg.open(&file)?, &mut std::io::stdout())?;
         }
         Command::Add(add_opts) => {
             let mut pkg = {
@@ -343,16 +356,10 @@ fn main() -> ExitCode {
     match real_main() {
         Ok(code) => code,
         Err(err) => {
-            eprint!("\x1b[31;1merror\x1b[0m: {err}");
+            eprintln!("\x1b[31;1merror\x1b[0m: {err}");
 
-            let chain = err.chain();
-            if chain.len() > 1 {
-                eprintln!(": {}", err.chain().nth(1).unwrap());
-            } else if chain.len() > 2 {
-                eprintln!();
-                chain.enumerate().skip(1).for_each(|(i, err)| {
-                    eprintln!("         #{i}: {err}");
-                });
+            for (i, err) in err.chain().enumerate().skip(1) {
+                eprintln!("         #{i}: {err}");
             }
 
             ExitCode::FAILURE
