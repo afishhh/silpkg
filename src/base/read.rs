@@ -276,8 +276,8 @@ impl DeflateReadHandle {
 impl ReadHandle {
     pub fn is_compressed(&self) -> bool {
         match self {
-            ReadHandle::Raw(_) => true,
-            ReadHandle::Deflate(_) => false,
+            ReadHandle::Raw(_) => false,
+            ReadHandle::Deflate(_) => true,
         }
     }
 

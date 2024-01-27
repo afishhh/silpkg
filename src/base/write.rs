@@ -605,8 +605,8 @@ impl DeflateWriteHandle {
 impl WriteHandle<'_> {
     pub fn is_compressed(&self) -> bool {
         match self.inner {
-            InnerWriteHandle::Raw(_) => true,
-            InnerWriteHandle::Deflate(_) => false,
+            InnerWriteHandle::Raw(_) => false,
+            InnerWriteHandle::Deflate(_) => true,
         }
     }
 
