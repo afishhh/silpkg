@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Seek, Write},
     mem::ManuallyDrop,
-    ops::Generator,
+    ops::Coroutine,
     pin::Pin,
 };
 
@@ -9,7 +9,7 @@ use base::FlattenResult;
 
 use crate::{
     base::{
-        self, EntryInfo, Flags, InnerWriteHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
+        self, Flags, InnerWriteHandle, PkgState, ReadSeekRequest, ReadSeekWriteRequest,
         ReadSeekWriteTruncateRequest, Response, WriteRequest,
     },
     errors,
@@ -94,16 +94,16 @@ impl<S: Read + Seek> SyncDriver<S> {
 
     pub fn drive_read<R>(
         &mut self,
-        mut coroutine: impl Generator<Response, Return = R, Yield = ReadSeekRequest>,
+        mut coroutine: impl Coroutine<Response, Return = R, Yield = ReadSeekRequest>,
     ) -> std::io::Result<R> {
         let mut response = Response::None;
 
         loop {
-            use std::ops::GeneratorState;
+            use std::ops::CoroutineState;
 
             match unsafe { Pin::new_unchecked(&mut coroutine) }.resume(response) {
-                GeneratorState::Yielded(request) => response = self.handle_readseek(request)?,
-                GeneratorState::Complete(result) => break Ok(result),
+                CoroutineState::Yielded(request) => response = self.handle_readseek(request)?,
+                CoroutineState::Complete(result) => break Ok(result),
             }
         }
     }
@@ -112,11 +112,15 @@ impl<S: Read + Seek> SyncDriver<S> {
 impl<S: Read + Seek + Write> SyncDriver<S> {
     fn handle_write(&mut self, request: WriteRequest) -> std::io::Result<Response> {
         Ok(match request {
-            WriteRequest::WriteAll(buffer) => {
-                self.storage.write_all(&buffer)?;
+            WriteRequest::WriteAll(ptr, count) => {
+                self.storage
+                    .write_all(unsafe { core::slice::from_raw_parts(ptr, count) })?;
                 Response::None
             }
-            WriteRequest::Write(buffer) => Response::Written(self.storage.write(&buffer)?),
+            WriteRequest::Write(ptr, count) => Response::Written(
+                self.storage
+                    .write(unsafe { core::slice::from_raw_parts(ptr, count) })?,
+            ),
             WriteRequest::Copy { from, count, to } => {
                 self.storage.copy_within(from, count, to)?;
                 Response::None
@@ -130,21 +134,21 @@ impl<S: Read + Seek + Write> SyncDriver<S> {
 
     pub fn drive_write<R>(
         &mut self,
-        mut coroutine: impl Generator<Response, Return = R, Yield = ReadSeekWriteRequest>,
+        mut coroutine: impl Coroutine<Response, Return = R, Yield = ReadSeekWriteRequest>,
     ) -> std::io::Result<R> {
         let mut response = Response::None;
 
         loop {
-            use std::ops::GeneratorState;
+            use std::ops::CoroutineState;
 
             match unsafe { Pin::new_unchecked(&mut coroutine) }.resume(response) {
-                GeneratorState::Yielded(ReadSeekWriteRequest::ReadSeek(request)) => {
+                CoroutineState::Yielded(ReadSeekWriteRequest::ReadSeek(request)) => {
                     response = self.handle_readseek(request)?
                 }
-                GeneratorState::Yielded(ReadSeekWriteRequest::Write(request)) => {
+                CoroutineState::Yielded(ReadSeekWriteRequest::Write(request)) => {
                     response = self.handle_write(request)?
                 }
-                GeneratorState::Complete(result) => break Ok(result),
+                CoroutineState::Complete(result) => break Ok(result),
             }
         }
     }
@@ -153,25 +157,25 @@ impl<S: Read + Seek + Write> SyncDriver<S> {
 impl<S: Read + Seek + Write + Truncate> SyncDriver<S> {
     pub fn drive_truncate<R>(
         &mut self,
-        mut coroutine: impl Generator<Response, Return = R, Yield = ReadSeekWriteTruncateRequest>,
+        mut coroutine: impl Coroutine<Response, Return = R, Yield = ReadSeekWriteTruncateRequest>,
     ) -> std::io::Result<R> {
         let mut response = Response::None;
 
         loop {
-            use std::ops::GeneratorState;
+            use std::ops::CoroutineState;
 
             match unsafe { Pin::new_unchecked(&mut coroutine) }.resume(response) {
-                GeneratorState::Yielded(ReadSeekWriteTruncateRequest::ReadSeek(request)) => {
+                CoroutineState::Yielded(ReadSeekWriteTruncateRequest::ReadSeek(request)) => {
                     response = self.handle_readseek(request)?
                 }
-                GeneratorState::Yielded(ReadSeekWriteTruncateRequest::Write(request)) => {
+                CoroutineState::Yielded(ReadSeekWriteTruncateRequest::Write(request)) => {
                     response = self.handle_write(request)?
                 }
-                GeneratorState::Yielded(ReadSeekWriteTruncateRequest::Truncate(size)) => {
+                CoroutineState::Yielded(ReadSeekWriteTruncateRequest::Truncate(size)) => {
                     self.storage.truncate(size)?;
                     response = Response::None;
                 }
-                GeneratorState::Complete(result) => break Ok(result),
+                CoroutineState::Complete(result) => break Ok(result),
             }
         }
     }
@@ -225,6 +229,7 @@ impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
 }
 
 impl<S: Read + Seek> Pkg<S> {
+    /// Returns a reference to the underlying reader
     pub fn inner(&self) -> &S {
         &self.driver.storage
     }

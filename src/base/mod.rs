@@ -38,9 +38,9 @@ pub enum ReadSeekRequest {
 }
 
 pub enum WriteRequest {
-    // TODO: Transient borrow, maybe this can be worked around using pointers?
-    WriteAll(Vec<u8>),
-    Write(Vec<u8>),
+    // TODO: This should be replaced with a borrow when possible.
+    WriteAll(*const u8, usize),
+    Write(*const u8, usize),
     Copy { from: u64, count: u64, to: u64 },
     WriteRepeated { value: u8, count: u64 },
 }
@@ -145,13 +145,16 @@ macro_rules! request {
         (yield $crate::base::ReadSeekRequest::ReadExact(__count).into())
             .assert_into_sized_read(__count)
     }};
-    (write all $buffer: expr) => {
-        (yield $crate::base::WriteRequest::WriteAll($buffer.into()).into()).assert_none()
-    };
-    (write $buffer: expr) => {
-        (yield $crate::base::WriteRequest::Write($buffer.into()).into()).assert_into_written()
-    };
-    (@uninit_buf $size: expr) => {};
+    (write all $buffer: expr) => {{
+        let __buffer = $buffer;
+        let __slice: &[u8] = __buffer.as_ref();
+        (yield $crate::base::WriteRequest::WriteAll(__slice.as_ptr(), __slice.len()).into()).assert_none()
+    }};
+    (write $buffer: expr) => {{
+        let __buffer = $buffer;
+        let __slice: &[u8] = __buffer.as_ref();
+        (yield $crate::base::WriteRequest::Write(__slice.as_ptr(), __slice.len()).into()).assert_into_written()
+    }};
     (write repeated $value: expr, $count: expr) => {
         (yield ($crate::base::WriteRequest::WriteRepeated {
             value: $value,
@@ -161,15 +164,13 @@ macro_rules! request {
         .assert_none()
     };
     (write $int: ident be $value: expr) => {
-        (yield $crate::base::WriteRequest::WriteAll($int::to_be_bytes($value).to_vec()).into())
-            .assert_none()
+        request!(write all $int::to_be_bytes($value))
     };
     (write $int: ident le $value: expr) => {
-        (yield $crate::base::WriteRequest::WriteAll($int::to_be_bytes($value).to_vec()).into())
-            .assert_none()
+        request!(write all $int::to_le_bytes($value))
     };
     (write u8 $value: expr) => {
-        (yield $crate::base::WriteRequest::WriteAll(vec![$value]).into()).assert_none()
+        request!(write all &[$value])
     };
     (copy $from: expr, $count: expr, $to: expr) => {
         (yield $crate::base::WriteRequest::Copy {

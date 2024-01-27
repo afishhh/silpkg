@@ -20,14 +20,13 @@ flate2 = { version = "1.0" } #, features = ["zlib-ng"], default-features = false
 bitflags = "2"
 log = { version = "0.4", default-features = false }
 thiserror = { package = "thiserror-core", version = "1", default-features = false }
-# no_std hashmap
-hashbrown = "0.13"
+hashbrown = "0.14"
 
 macros = { path = "./macros", default-features = false }
 
 [dev-dependencies]
 # Enable logging during testing
 test-log = "0.2.11"
-env_logger = "0.10"
+env_logger = "0.11"
 # Generate random test data
 rand = "0.8"

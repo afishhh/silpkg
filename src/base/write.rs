@@ -286,7 +286,12 @@ impl PkgState {
     #[generator(static, yield ReadSeekWriteTruncateRequest -> Response)]
     pub fn repack(&mut self) -> Result<(), RepackError> {
         // Remove empty entries
-        self.entries.drain_filter(|entry| entry.is_none());
+        for entry in std::mem::take(&mut self.entries) {
+            if entry.is_some() {
+                self.entries.push(entry);
+            }
+        }
+
         self.entries.sort_by(|a, b| {
             let ea = a.as_ref().unwrap();
             let eb = b.as_ref().unwrap();

@@ -1,7 +1,7 @@
 //! `silpkg` is a library for interacting with [SIL](https://achurch.org/SIL/) PKG files
 //!
 //! # Features
-//! This library separates parsing/modification logic from IO by using [generators](https://doc.rust-lang.org/beta/unstable-book/language-features/generators.html)
+//! This library separates parsing/modification logic from IO by using [coroutines](https://doc.rust-lang.org/beta/unstable-book/language-features/coroutines.html)
 //! and aims to support many ways of interfacing with the base logic module.
 //! Currently only a synchronous interface is implemented in [`sync`].
 //!
@@ -25,8 +25,7 @@
 #![feature(seek_stream_len)]
 #![feature(iterator_try_collect)]
 #![feature(map_try_insert)]
-#![feature(drain_filter)]
-#![feature(generators, generator_trait)]
+#![feature(coroutines, coroutine_trait)]
 #![feature(read_buf)]
 #![feature(map_many_mut)]
 // thiserror_core
@@ -54,9 +53,6 @@ mod util;
 #[cfg(feature = "std")]
 #[doc(cfg(feature = "std"))]
 pub mod sync;
-
-/// An interface for reading and writing in-memory PKG archives.
-pub mod slice;
 
 pub use base::{Compression, EntryCompression, Flags};
 #[cfg(feature = "std")]

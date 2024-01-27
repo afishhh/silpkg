@@ -15,11 +15,11 @@ impl VisitMut for LifetimeAdder {
     }
 }
 
-struct ReplaceGeneratorAwait {
+struct ReplaceCoroutineAwait {
     resume_type: syn::Type,
 }
 
-impl VisitMut for ReplaceGeneratorAwait {
+impl VisitMut for ReplaceCoroutineAwait {
     fn visit_expr_mut(&mut self, i: &mut syn::Expr) {
         match i {
             syn::Expr::Await(ei) => {
@@ -30,15 +30,15 @@ impl VisitMut for ReplaceGeneratorAwait {
 
                 *i = syn::parse_quote! {
                     {
-                        let mut __generator = #base;
+                        let mut __coroutine = #base;
                         let mut __response: #resume_type = Default::default();
 
                         loop {
-                            use ::core::{pin::Pin, ops::{Generator, GeneratorState}};
+                            use ::core::{pin::Pin, ops::{Coroutine, CoroutineState}};
 
-                            match unsafe { Pin::new_unchecked(&mut __generator) }.resume(__response) {
-                                GeneratorState::Yielded(__request) => __response = yield __request.into(),
-                                GeneratorState::Complete(__result) => break __result,
+                            match unsafe { Pin::new_unchecked(&mut __coroutine) }.resume(__response) {
+                                CoroutineState::Yielded(__request) => __response = yield __request.into(),
+                                CoroutineState::Complete(__result) => break __result,
                             }
                         }
                     }
@@ -53,7 +53,7 @@ mod kw {
     syn::custom_keyword!(lifetime);
 }
 
-struct GeneratorInput {
+struct CoroutineInput {
     is_static: bool,
 
     yield_type: Option<syn::Type>,
@@ -61,7 +61,7 @@ struct GeneratorInput {
     lifetime: Option<syn::Lifetime>,
 }
 
-impl Parse for GeneratorInput {
+impl Parse for CoroutineInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut output = Self {
             is_static: false,
@@ -136,7 +136,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
     let func_result = syn::parse::<BareItemFn>(ts.clone());
     let input_result = match attr_ts.is_empty() {
         true => Ok(None),
-        false => syn::parse::<GeneratorInput>(attr_ts).map(Some),
+        false => syn::parse::<CoroutineInput>(attr_ts).map(Some),
     };
 
     if let Err(err) = &input_result {
@@ -195,7 +195,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
 
         let mut body_as_block = syn::parse2::<syn::Block>(func.block.clone()).ok();
         if let Some(block) = &mut body_as_block {
-            ReplaceGeneratorAwait {
+            ReplaceCoroutineAwait {
                 resume_type: resume_type.clone(),
             }
             .visit_block_mut(block);
@@ -220,7 +220,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
 
         quote! {
             #(#attrs)*
-            #vis fn #name<#generic_params>(#args) -> impl ::core::ops::Generator<
+            #vis fn #name<#generic_params>(#args) -> impl ::core::ops::Coroutine<
                 #resume_type,
                 Yield = #yield_type,
                 Return = #return_type
