@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use quote::quote;
 use syn::{parse::Parse, visit_mut::VisitMut, Token};
 
 struct LifetimeAdder {
@@ -201,10 +201,6 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
             .visit_block_mut(block);
         }
 
-        let body = body_as_block
-            .map(|x| x.to_token_stream())
-            .unwrap_or_else(|| func.block);
-
         let maybe_static = input
             .map(|x| {
                 if x.is_static {
@@ -218,17 +214,21 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
         let generic_params = generics.params;
         let where_clause = generics.where_clause;
 
+        let new_body = if let Some(block) = body_as_block {
+            quote!({
+                #maybe_static move |_: #resume_type| #block
+            })
+        } else {
+            func.block
+        };
+
         quote! {
             #(#attrs)*
             #vis fn #name<#generic_params>(#args) -> impl ::core::ops::Coroutine<
                 #resume_type,
                 Yield = #yield_type,
                 Return = #return_type
-            > + #coro_lifetime #where_clause {
-                #maybe_static move |_: #resume_type| {
-                    #body
-                }
-            }
+            > + #coro_lifetime #where_clause #new_body
         }
         .into()
     } else {
