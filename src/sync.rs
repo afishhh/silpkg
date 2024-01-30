@@ -385,9 +385,12 @@ impl<S: Read + Seek + Write> Pkg<S> {
     /// Create a new archive in `storage`.
     ///
     /// # Notes
-    /// Note that this function does not truncate the writer to allow for use with non [`Truncate`]
+    /// This function does not truncate the writer to allow for use with non-[`Truncate`]
     /// writers, this means that if the writer already contains data it may still remain there until
     /// it's overwritten by inserted data or the archive is [`repack`](Self::repack)ed.
+    ///
+    /// # Errors
+    /// - [`CreateError::Io`] if an IO error occurs.
     pub fn create(storage: S) -> Result<Self, CreateError> {
         let mut driver = SyncDriver::new(storage);
         let state = driver.drive_write(PkgState::create()).flatten()?;
