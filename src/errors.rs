@@ -120,8 +120,8 @@ pub enum OpenError<Io: Error = Infallible> {
 
 /// An error triggered when calling `read` on an [`EntryReader`] or [`EntryWriter`]
 ///
-/// [`EntryReader`]: crate::slice::EntryReader
-/// [`EntryWriter`]: crate::slice::EntryWriter
+/// [`EntryReader`]: crate::sync::EntryReader
+/// [`EntryWriter`]: crate::sync::EntryWriter
 #[derive(Debug, Error)]
 pub enum ReadError<Io: Error = Infallible> {
     /// A read was performed on an EntryWriter that does not support reads.
@@ -137,8 +137,8 @@ pub enum ReadError<Io: Error = Infallible> {
 
 /// An error triggered when calling `seek` on an [`EntryReader`] or [`EntryWriter`]
 ///
-/// [`EntryReader`]: crate::slice::EntryReader
-/// [`EntryWriter`]: crate::slice::EntryWriter
+/// [`EntryReader`]: crate::sync::EntryReader
+/// [`EntryWriter`]: crate::sync::EntryWriter
 #[derive(Debug, Error)]
 pub enum SeekError<Io: Error = Infallible> {
     /// Seek before zero
