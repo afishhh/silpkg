@@ -213,7 +213,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
                 .unwrap_or(quote!());
 
             quote!({
-                #maybe_static move |_: #resume_type| #block
+                #[coroutine] #maybe_static move |_: #resume_type| #block
             })
         } else {
             func.block
