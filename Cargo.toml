@@ -21,7 +21,7 @@ log = { version = "0.4", default-features = false }
 thiserror = { package = "thiserror-core", version = "1", default-features = false }
 hashbrown = "0.14"
 
-macros = { path = "./macros", default-features = false }
+macros = { package = "silpkg-macros", path = "./macros", default-features = false }
 
 [dev-dependencies]
 # Enable logging during testing
