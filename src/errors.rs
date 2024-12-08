@@ -158,7 +158,7 @@ pub enum SeekError<Io: Error = Infallible> {
 /// An error triggered while repacking.
 #[derive(Debug, Error)]
 pub enum RepackError<Io: Error = Infallible> {
-    #[error("Repacking PKGs with overlapping entries is not supported (yet)")]
+    #[error("Repacking PKGs with overlapping entries is not supported")]
     /// The archive contained overlapping entries.
     ///
     /// This cannot be triggered by creating your own archive and can only happen if you parse an
