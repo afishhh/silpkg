@@ -250,10 +250,7 @@ impl<E: Error + Into<std::io::Error>> From<SeekError<E>> for std::io::Error {
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "Seek out of bounds")
             }
             SeekError::NotSeekable => std::io::Error::new(
-                #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
-                #[cfg(not(feature = "io_error_more"))]
-                std::io::ErrorKind::Other,
                 "Cannot read on compressed entry writer",
             ),
             SeekError::Io(err) => err.into(),

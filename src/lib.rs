@@ -28,12 +28,11 @@
 #![feature(coroutines, coroutine_trait)]
 #![feature(read_buf)]
 #![feature(map_many_mut)]
-// thiserror_core
-#![feature(error_in_core)]
 // this could be removed if necessary as it's only used in errors.rs to implement from conversion
 // between errors, but we already use many unstable features and this is the cleaner option
 #![feature(auto_traits)]
 #![feature(negative_impls)]
+#![allow(dead_code)] // TODO: remove
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;

@@ -245,7 +245,7 @@ impl PkgState {
                 two.flags = one.flags;
 
                 request!(seek SeekFrom::Start(Self::entry_list_offset() + one_idx as u64 * ENTRY_SIZE));
-                Entry::write_empty();
+                Entry::write_empty().await;
 
                 request!(seek SeekFrom::Start(Self::entry_list_offset() + two_idx as u64 * ENTRY_SIZE));
                 two.write().await;
@@ -373,8 +373,12 @@ impl PkgState {
         Ok(())
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response)]
-    pub fn insert(&mut self, path: String, flags: Flags) -> Result<WriteHandle, InsertError> {
+    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'coro)]
+    pub fn insert<'coro>(
+        &mut self,
+        path: String,
+        flags: Flags,
+    ) -> Result<WriteHandle<'coro>, InsertError> {
         if self.path_to_entry_index_map.contains_key(&path) {
             return Err(InsertError::AlreadyExists);
         }

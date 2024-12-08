@@ -17,13 +17,45 @@ use crate::{
     util::{ReadSeekWriteExt, WriteExt},
 };
 
+/// [`CreateError`] returned by [`sync::Pkg`].
+///
+/// [`CreateError`]: crate::errors::CreateError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type CreateError = errors::CreateError<std::io::Error>;
+/// [`ParseError`] returned by [`sync::Pkg`].
+///
+/// [`ParseError`]: crate::errors::ParseError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type ParseError = errors::ParseError<std::io::Error>;
+/// [`InsertError`] returned by [`sync::Pkg`].
+///
+/// [`InsertError`]: errors::InsertError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type InsertError = errors::InsertError<std::io::Error>;
+/// [`OpenError`] returned by [`sync::Pkg`].
+///
+/// [`OpenError`]: crate::errors::OpenError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type OpenError = errors::OpenError<std::io::Error>;
+/// [`RemoveError`] returned by [`sync::Pkg`].
+///
+/// [`RemoveError`]: crate::errors::RemoveError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type RemoveError = errors::RemoveError<std::io::Error>;
+/// [`RenameError`] returned by [`sync::Pkg`].
+///
+/// [`RenameError`]: crate::errors::RenameError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type RenameError = errors::RenameError<std::io::Error>;
+/// [`RepackError`] returned by [`sync::Pkg`].
+///
+/// [`RepackError`]: crate::errors::RepackError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type RepackError = errors::RepackError<std::io::Error>;
+/// [`ReplaceError`] returned by [`sync::Pkg`].
+///
+/// [`ReplaceError`]: crate::errors::ReplaceError
+/// [`sync::Pkg`]: crate::sync::Pkg
 pub type ReplaceError = errors::ReplaceError<std::io::Error>;
 
 /// A trait for objects that can be truncated.
@@ -202,12 +234,10 @@ impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
 
 /// # Notes
 /// Even though this type implements [`Seek`] [`seek`]ing will not always succeed, for example if the entry
-/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`] if the `io_error_more`
-/// feature is enabled or [`Other`] otherwise.
+/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`].
 ///
 /// [`seek`]: EntryReader::seek
 /// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
-/// [`Other`]: std::io::ErrorKind::Other
 impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match &mut self.handle {
@@ -216,10 +246,7 @@ impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
             }
             // FIXME: Should this really work like this?
             base::ReadHandle::Deflate(_) => Err(std::io::Error::new(
-                #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
-                #[cfg(not(feature = "io_error_more"))]
-                std::io::ErrorKind::Other,
                 "Cannot seek on compressed entry reader",
             )),
         }
@@ -346,12 +373,10 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
 
 /// # Notes
 /// Even though this type implements [`Seek`] [`seek`]ing will not always succeed, for example if the entry
-/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`] if the `io_error_more`
-/// feature is enabled or [`Other`] otherwise.
+/// happens to be compressed then [`seek`]ing will fail with [`NotSeekable`].
 ///
 /// [`seek`]: EntryReader::seek
 /// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
-/// [`Other`]: std::io::ErrorKind::Other
 impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match self.handle.inner_mut() {
@@ -359,10 +384,7 @@ impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
                 Ok(self.driver.drive_read(handle.seek(pos.into())).flatten()?)
             }
             DataWriteHandle::Deflate(_) => Err(std::io::Error::new(
-                #[cfg(feature = "io_error_more")]
                 std::io::ErrorKind::NotSeekable,
-                #[cfg(not(feature = "io_error_more"))]
-                std::io::ErrorKind::Other,
                 "Cannot seek on compressed entry writer",
             )),
         }
