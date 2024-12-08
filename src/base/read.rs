@@ -6,12 +6,12 @@ use crate::base::BUFFER_SIZE;
 use super::{OpenError, PkgState, RawFlags, ReadSeekRequest, Response, SeekError, SeekFrom};
 
 pub trait GeneratorRead {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn read(&mut self, buffer: &mut [u8]) -> usize;
 }
 
 pub trait GeneratorSeek {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError>;
 }
 
@@ -64,7 +64,7 @@ pub fn open(state: &PkgState, path: &str) -> Result<ReadHandle, OpenError> {
 }
 
 impl GeneratorRead for RawReadWriteHandle {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn read(&mut self, buffer: &mut [u8]) -> usize {
         let end = (self.cursor + buffer.len() as u64).min(self.size);
         let count = end - self.cursor;
@@ -76,7 +76,7 @@ impl GeneratorRead for RawReadWriteHandle {
 }
 
 impl GeneratorSeek for RawReadWriteHandle {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match seekfrom {
             SeekFrom::Start(start) => {
@@ -104,7 +104,7 @@ impl GeneratorSeek for RawReadWriteHandle {
 }
 
 impl GeneratorRead for DeflateReadHandle {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn read(&mut self, mut buffer: &mut [u8]) -> usize {
         if self.done {
             return 0;
@@ -159,7 +159,7 @@ impl GeneratorRead for DeflateReadHandle {
 }
 
 impl GeneratorRead for ReadHandle {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn read(&mut self, buffer: &mut [u8]) -> usize {
         match self {
             ReadHandle::Raw(h) => h.read(buffer).await,
@@ -169,7 +169,7 @@ impl GeneratorRead for ReadHandle {
 }
 
 impl GeneratorSeek for ReadHandle {
-    #[generator(static, yield ReadSeekRequest -> Response)]
+    #[generator(static, yield ReadSeekRequest -> Response, !use)]
     fn seek(&mut self, seekfrom: SeekFrom) -> Result<u64, SeekError> {
         match self {
             ReadHandle::Raw(h) => h.seek(seekfrom).await,

@@ -1,5 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
-use core::{cmp::Ordering, marker::PhantomData};
+use core::cmp::Ordering;
 
 use flate2::Compress;
 use hashbrown::HashMap;
@@ -373,12 +373,12 @@ impl PkgState {
         Ok(())
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'coro)]
-    pub fn insert<'coro>(
-        &mut self,
+    #[generator(static, yield ReadSeekWriteRequest -> Response, use<'a>)]
+    pub fn insert<'a>(
+        &'a mut self,
         path: String,
         flags: Flags,
-    ) -> Result<WriteHandle<'coro>, InsertError> {
+    ) -> Result<WriteHandle<'a>, InsertError> {
         if self.path_to_entry_index_map.contains_key(&path) {
             return Err(InsertError::AlreadyExists);
         }
@@ -425,7 +425,7 @@ impl PkgState {
 }
 
 pub trait GeneratorWrite {
-    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, !use)]
     fn write(&mut self, buf: &[u8]) -> usize;
 }
 
@@ -453,14 +453,13 @@ pub struct WriteHandle<'a> {
     flags: Flags,
 }
 
-impl<'a, 'b: 'a> WriteHandle<'b> {
+impl<'b> WriteHandle<'b> {
     pub fn inner_mut(&mut self) -> &mut DataWriteHandle {
         &mut self.inner
     }
 
-    // FIXME: The PhantomData is a workaround for, possibly, a rustc bug.
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    fn flush_internal(&mut self) -> PhantomData<&'b ()> {
+    #[generator(static, yield ReadSeekWriteRequest -> Response, use<'_, 'b>)]
+    fn flush_internal(&mut self) -> () {
         match &mut self.inner {
             DataWriteHandle::Deflate(deflate) => deflate.flush().await,
             _ => (),
@@ -503,8 +502,8 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
         Default::default()
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
-    pub fn flush(&mut self) -> PhantomData<&'b ()> {
+    #[generator(static, yield ReadSeekWriteRequest -> Response, use<'_, 'b>)]
+    pub fn flush(&mut self) -> () {
         let (offset, cursor) = match self.inner {
             DataWriteHandle::Raw(RawReadWriteHandle { cursor, offset, .. })
             | DataWriteHandle::Deflate(DeflateWriteHandle {
@@ -520,14 +519,14 @@ impl<'a, 'b: 'a> WriteHandle<'b> {
         Default::default()
     }
 
-    #[generator(static, yield ReadSeekWriteRequest -> Response, lifetime 'a)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, use<'b>)]
     pub fn finish(mut self) {
         self.flush_internal().await;
     }
 }
 
 impl GeneratorWrite for RawReadWriteHandle {
-    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, !use)]
     fn write(&mut self, buf: &[u8]) -> usize {
         log::trace!("Writing entry data to {}", self.offset);
 
@@ -540,7 +539,7 @@ impl GeneratorWrite for RawReadWriteHandle {
 }
 
 impl GeneratorWrite for DeflateWriteHandle {
-    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, !use)]
     fn write(&mut self, mut buf: &[u8]) -> usize {
         log::trace!("Writing compressed entry data at {}", self.offset);
 
@@ -613,7 +612,7 @@ impl DeflateWriteHandle {
 }
 
 impl GeneratorWrite for WriteHandle<'_> {
-    #[generator(static, yield ReadSeekWriteRequest -> Response)]
+    #[generator(static, yield ReadSeekWriteRequest -> Response, !use)]
     fn write(&mut self, buf: &[u8]) -> usize {
         match &mut self.inner {
             DataWriteHandle::Raw(h) => h.write(buf).await,

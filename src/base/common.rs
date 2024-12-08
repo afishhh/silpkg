@@ -11,8 +11,6 @@ pub fn pkg_path_hash(path: &str) -> u32 {
 
         // TODO: Why is this case insensitive
         c.make_ascii_lowercase();
-        // FIXME: Slipstream uses an unsigned shr
-        //        (does that make a difference if we use an unsigned type here?)
         hash = hash.overflowing_shl(27).0 | hash.overflowing_shr(5).0;
         hash ^= c as u32;
         hash &= 0x00000000FFFFFFFF;

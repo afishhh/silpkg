@@ -58,7 +58,13 @@ struct CoroutineInput {
 
     yield_type: Option<syn::Type>,
     resume_type: Option<syn::Type>,
-    lifetime: Option<syn::Lifetime>,
+    capture: CaptureMode,
+}
+
+enum CaptureMode {
+    Implicit,
+    Explicit(syn::PreciseCapture),
+    None,
 }
 
 impl Parse for CoroutineInput {
@@ -67,7 +73,7 @@ impl Parse for CoroutineInput {
             is_static: false,
             yield_type: None,
             resume_type: None,
-            lifetime: None,
+            capture: CaptureMode::Implicit,
         };
 
         {
@@ -106,8 +112,13 @@ impl Parse for CoroutineInput {
         }
 
         input.parse::<Token![,]>()?;
-        input.parse::<kw::lifetime>()?;
-        output.lifetime = Some(input.parse::<syn::Lifetime>()?);
+
+        if input.parse::<Option<Token![!]>>()?.is_some() {
+            input.parse::<Token![use]>()?;
+            output.capture = CaptureMode::None;
+        } else {
+            output.capture = CaptureMode::Explicit(input.parse::<syn::PreciseCapture>()?);
+        }
 
         Ok(output)
     }
@@ -156,24 +167,26 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
             syn::ReturnType::Type(_, ref tp) => tp,
         };
 
-        let coro_lifetime = match input.as_ref().and_then(|x| x.lifetime.clone()) {
-            Some(lt) => lt,
-            None => {
-                let lt = syn::Lifetime::new("'__coroutine", Span::call_site());
-                generics.params.insert(0, syn::parse_quote!(#lt));
-                lt
-            }
+        let implicit_lifetime = if input
+            .as_ref()
+            .is_none_or(|x| matches!(x.capture, CaptureMode::Implicit))
+        {
+            let lt = syn::Lifetime::new("'__coroutine", Span::call_site());
+            generics.params.insert(0, syn::parse_quote!(#lt));
+            Some(lt)
+        } else {
+            None
         };
 
-        {
+        if let Some(implicit_lifetime) = implicit_lifetime.clone() {
             let mut ladder = LifetimeAdder {
-                lifetime: coro_lifetime.clone(),
+                lifetime: implicit_lifetime.clone(),
             };
             for arg in args.iter_mut() {
                 match arg {
                     syn::FnArg::Receiver(recv) => {
                         if let Some((_, lifetime @ None)) = &mut recv.reference {
-                            *lifetime = Some(coro_lifetime.clone())
+                            *lifetime = Some(implicit_lifetime.clone())
                         }
                     }
                     syn::FnArg::Typed(pat) => ladder.visit_pat_type_mut(pat),
@@ -195,6 +208,20 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
 
         let generic_params = generics.params;
         let where_clause = generics.where_clause;
+        let precise_captures = match input
+            .as_ref()
+            .map(|x| &x.capture)
+            .unwrap_or(&CaptureMode::Implicit)
+        {
+            CaptureMode::Implicit => {
+                let lifetime = implicit_lifetime.as_ref().unwrap();
+                quote! { + use<#lifetime> }
+            }
+            CaptureMode::Explicit(precise_capture) => {
+                quote! { + #precise_capture }
+            }
+            CaptureMode::None => TokenStream2::new(),
+        };
 
         let new_body = if let Ok(mut block) = syn::parse2::<syn::Block>(func.block.clone()) {
             ReplaceCoroutineAwait {
@@ -225,7 +252,7 @@ pub fn generator(attr_ts: TokenStream, ts: TokenStream) -> TokenStream {
                 #resume_type,
                 Yield = #yield_type,
                 Return = #return_type
-            > + #coro_lifetime #where_clause #new_body
+            > #precise_captures #where_clause #new_body
         }
         .into()
     } else {
