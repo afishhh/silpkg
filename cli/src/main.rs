@@ -1,5 +1,3 @@
-#![feature(file_create_new)]
-
 use std::{
     fs::File,
     io::{Read, Write},

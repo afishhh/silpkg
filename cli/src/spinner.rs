@@ -63,8 +63,4 @@ impl<'a> Spinner<'a> {
 
         eprintln!("{message}");
     }
-
-    pub fn finish(self) {
-        eprintln!();
-    }
 }
