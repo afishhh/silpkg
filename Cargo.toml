@@ -3,10 +3,13 @@ members = ["cli"]
 
 [package]
 name = "silpkg"
+description = "A library for working with SIL's PKG archives"
+repository = "https://github.com/afishhh/silpkg"
+version = "0.1.0"
 edition = "2021"
 authors = ["Fishhh"]
 license = "MIT OR Apache-2.0"
-description = "A library for working with SIL PKG archives"
+publish = true
 
 [features]
 default = ["std"]
@@ -21,7 +24,7 @@ log = { version = "0.4", default-features = false }
 thiserror = { package = "thiserror-core", version = "1", default-features = false }
 hashbrown = "0.14"
 
-macros = { package = "silpkg-macros", path = "./macros", default-features = false }
+macros = { package = "silpkg-macros", version = "0.1", path = "./macros", default-features = false }
 
 [dev-dependencies]
 # Enable logging during testing

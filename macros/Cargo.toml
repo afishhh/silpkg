@@ -1,7 +1,11 @@
 [package]
 name = "silpkg-macros"
+description = "Helper crate for silpkg, permanently unstable"
+repository = "https://github.com/afishhh/silpkg"
+version = "0.1.0"
 license = "MIT OR Apache-2.0"
 edition = "2021"
+publish = true
 
 [lib]
 proc-macro = true
