@@ -21,8 +21,8 @@ unstable_base = []
 flate2 = { version = "1" }
 bitflags = "2"
 log = { version = "0.4", default-features = false }
-thiserror = { package = "thiserror-core", version = "1", default-features = false }
-hashbrown = "0.14"
+thiserror = { version = "2", default-features = false }
+hashbrown = "0.15"
 
 macros = { package = "silpkg-macros", version = "0.1", path = "./macros", default-features = false }
 
