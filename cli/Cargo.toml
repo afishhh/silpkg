@@ -9,8 +9,6 @@ description = "A CLI for working with SIL PKG archives"
 name = "silpkg"
 path = "src/main.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 silpkg = { path = ".." }
 
