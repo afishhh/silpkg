@@ -276,7 +276,7 @@ impl PkgState {
             // FIXME: borrow path
             request!(write all entry.path.clone());
             request!(write u8 0);
-            size += entry.path.as_bytes().len() + 1;
+            size += entry.path.len() + 1;
         }
 
         size as u64
