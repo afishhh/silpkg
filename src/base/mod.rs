@@ -246,6 +246,7 @@ impl EntryCompression {
 
 #[derive(Debug, Clone)]
 /// Information about an entry present in the archive.
+#[non_exhaustive]
 pub struct EntryInfo {
     /// Index of the entry in the archive.
     pub index: usize,
