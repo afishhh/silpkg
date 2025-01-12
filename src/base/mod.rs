@@ -245,11 +245,14 @@ impl EntryCompression {
 }
 
 #[derive(Debug, Clone)]
+/// Information about an entry present in the archive.
 pub struct EntryInfo {
+    /// Index of the entry in the archive.
     pub index: usize,
+    /// Compressed size of the data corresponding to this entry.
     pub compressed_size: u32,
+    /// Uncompressed size of the data corresponding to this entry.
     pub uncompressed_size: u32,
-    pub compression: EntryCompression,
 }
 
 #[derive(Debug, Clone)]
@@ -297,6 +300,21 @@ impl PkgState {
 
     pub fn paths(&self) -> impl Iterator<Item = &String> {
         self.path_to_entry_index_map.keys()
+    }
+
+    pub fn index(&self, path: &str) -> Option<usize> {
+        self.path_to_entry_index_map.get(path).copied()
+    }
+
+    pub fn info(&self, index: usize) -> Option<EntryInfo> {
+        match self.entries.get(index) {
+            Some(Some(entry)) => Some(EntryInfo {
+                index,
+                compressed_size: entry.data_size,
+                uncompressed_size: entry.data_size,
+            }),
+            _ => None,
+        }
     }
 
     #[inline]

@@ -53,7 +53,8 @@ mod util;
 #[doc(cfg(feature = "std"))]
 pub mod sync;
 
-pub use base::{Compression, EntryCompression, Flags};
+pub use base::{Compression, EntryCompression, EntryInfo, Flags};
+
 #[cfg(feature = "std")]
 #[doc(cfg(feature = "std"))]
 pub use sync::Truncate;

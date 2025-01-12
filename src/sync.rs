@@ -15,6 +15,7 @@ use crate::{
     },
     errors,
     util::{ReadSeekWriteExt, WriteExt},
+    EntryInfo,
 };
 
 /// [`CreateError`] returned by [`sync::Pkg`].
@@ -226,7 +227,7 @@ pub struct EntryReader<'a, S: Read + Seek> {
     handle: base::ReadHandle,
 }
 
-impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
+impl<S: Read + Seek> Read for EntryReader<'_, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.driver.drive_read(self.handle.read(buf))
     }
@@ -238,7 +239,7 @@ impl<'a, S: Read + Seek> Read for EntryReader<'a, S> {
 ///
 /// [`seek`]: EntryReader::seek
 /// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
-impl<'a, S: Read + Seek> Seek for EntryReader<'a, S> {
+impl<S: Read + Seek> Seek for EntryReader<'_, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match &mut self.handle {
             base::ReadHandle::Raw(handle) => {
@@ -290,6 +291,14 @@ impl<S: Read + Seek> Pkg<S> {
         })
     }
 
+    /// Retrieve entry metadata, like size or index.
+    ///
+    /// # Notes
+    /// Returns [`None`] if an entry with that name does not exist.
+    pub fn metadata(&self, path: &str) -> Option<EntryInfo> {
+        self.state.index(path).and_then(|idx| self.state.info(idx))
+    }
+
     // TODO: Add a way to access this metadata
     // pub fn fixme_remove_this_print_size_info(&mut self) {
     //     {
@@ -333,7 +342,7 @@ pub struct EntryWriter<'a, S: Read + Seek + Write> {
     handle: ManuallyDrop<base::WriteHandle<'a>>,
 }
 
-impl<'a, S: Read + Seek + Write> EntryWriter<'a, S> {
+impl<S: Read + Seek + Write> EntryWriter<'_, S> {
     /// Writes entry metadata to the underlying writer.
     pub fn finish(mut self) -> std::io::Result<()> {
         let handle = unsafe { ManuallyDrop::take(&mut self.handle) };
@@ -345,7 +354,7 @@ impl<'a, S: Read + Seek + Write> EntryWriter<'a, S> {
     }
 }
 
-impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
+impl<S: Read + Seek + Write> Write for EntryWriter<'_, S> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
             DataWriteHandle::Raw(handle) => Ok(self.driver.drive_write(handle.write(buf))?),
@@ -359,7 +368,7 @@ impl<'a, S: Read + Seek + Write> Write for EntryWriter<'a, S> {
     }
 }
 
-impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
+impl<S: Read + Seek + Write> Read for EntryWriter<'_, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
             DataWriteHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
@@ -377,7 +386,7 @@ impl<'a, S: Read + Seek + Write> Read for EntryWriter<'a, S> {
 ///
 /// [`seek`]: EntryReader::seek
 /// [`NotSeekable`]: std::io::ErrorKind::NotSeekable
-impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
+impl<S: Read + Seek + Write> Seek for EntryWriter<'_, S> {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         match self.handle.inner_mut() {
             DataWriteHandle::Raw(handle) => {
@@ -391,7 +400,7 @@ impl<'a, S: Read + Seek + Write> Seek for EntryWriter<'a, S> {
     }
 }
 
-impl<'a, S: Read + Seek + Write> Drop for EntryWriter<'a, S> {
+impl<S: Read + Seek + Write> Drop for EntryWriter<'_, S> {
     /// Writes entry metadata to the underlying writer.
     ///
     /// # Errors
