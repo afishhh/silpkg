@@ -207,6 +207,18 @@ impl<E: Error + Into<std::io::Error>> From<RenameError<E>> for std::io::Error {
 }
 
 #[cfg(feature = "std")]
+impl<E: Error + Into<std::io::Error>> From<ReplaceError<E>> for std::io::Error {
+    fn from(val: ReplaceError<E>) -> Self {
+        match val {
+            ReplaceError::NotFound => {
+                std::io::Error::new(std::io::ErrorKind::NotFound, val.to_string())
+            }
+            ReplaceError::Io(err) => err.into(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
 impl<E: Error + Into<std::io::Error>> From<InsertError<E>> for std::io::Error {
     fn from(val: InsertError<E>) -> Self {
         match val {
