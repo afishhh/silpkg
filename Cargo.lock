@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "silpkg"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bitflags",
  "env_logger 0.11.6",
