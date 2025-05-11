@@ -22,4 +22,4 @@ For implementing your own IO frontend for the `silpkg::base` module, look at how
 
 ## License
 
-`silpkg` itself is licensed under the GNU General Public License 3.0, `silpkg-macros` in the `macros/` directory is licensed under MIT OR Apache-2.0.
+`silpkg` itself is licensed under the GNU General Public License 2.0, `silpkg-macros` in the `macros/` directory is licensed under MIT OR Apache-2.0.
