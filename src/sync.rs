@@ -227,6 +227,21 @@ pub struct EntryReader<'a, S: Read + Seek> {
     handle: base::ReadHandle,
 }
 
+impl<S: Read + Seek> EntryReader<'_, S> {
+    /// Returns whether this reader is seekable.
+    ///
+    /// If this method returns `false`, then seeking will always fail with
+    /// an error of type [`std::io::ErrorKind::NotSeekable`].
+    pub fn is_seekable(&self) -> bool {
+        self.handle.is_seekable()
+    }
+
+    /// Returns whether this reader is reading from a compressed entry.
+    pub fn is_compressed(&self) -> bool {
+        self.handle.is_compressed()
+    }
+}
+
 impl<S: Read + Seek> Read for EntryReader<'_, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.driver.drive_read(self.handle.read(buf))
@@ -343,6 +358,19 @@ pub struct EntryWriter<'a, S: Read + Seek + Write> {
 }
 
 impl<S: Read + Seek + Write> EntryWriter<'_, S> {
+    /// Returns whether this writer is seekable.
+    ///
+    /// If this method returns `false`, then seeking will always fail with
+    /// an error of type [`std::io::ErrorKind::NotSeekable`].
+    pub fn is_seekable(&self) -> bool {
+        self.handle.is_seekable()
+    }
+
+    /// Returns whether this writer is writing to a compressed entry.
+    pub fn is_compressed(&self) -> bool {
+        self.handle.is_compressed()
+    }
+
     /// Writes entry metadata to the underlying writer.
     pub fn finish(mut self) -> std::io::Result<()> {
         let handle = unsafe { ManuallyDrop::take(&mut self.handle) };

@@ -27,7 +27,6 @@
 #![feature(map_try_insert)]
 #![feature(coroutines, coroutine_trait)]
 #![feature(read_buf)]
-#![allow(dead_code)] // TODO: remove
 #![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
