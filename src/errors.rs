@@ -246,9 +246,7 @@ impl<E: Error + Into<std::io::Error>> From<OpenError<E>> for std::io::Error {
 impl<E: Error + Into<std::io::Error>> From<ReadError<E>> for std::io::Error {
     fn from(val: ReadError<E>) -> Self {
         match val {
-            ReadError::NotReadable => {
-                std::io::Error::new(std::io::ErrorKind::Other, "Not readable")
-            }
+            ReadError::NotReadable => std::io::Error::other("Not readable"),
             ReadError::Io(err) => err.into(),
         }
     }

@@ -372,8 +372,7 @@ impl<S: Read + Seek + Write> Read for EntryWriter<'_, S> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self.handle.inner_mut() {
             DataWriteHandle::Raw(handle) => self.driver.drive_read(handle.read(buf)),
-            DataWriteHandle::Deflate(_) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            DataWriteHandle::Deflate(_) => Err(std::io::Error::other(
                 "Cannot read on compressed entry writer",
             )),
         }

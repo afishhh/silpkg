@@ -3,113 +3,8 @@ use std::io::{Read, Seek, Write};
 
 use crate::base::BUFFER_SIZE;
 
-macro_rules! define_read_le_methods {
-    { $($name:ident -> $ret:ty;)* } => {
-        $(fn $name(&mut self) -> ::std::io::Result<$ret> {
-            let mut buf = [0u8; ::std::mem::size_of::<$ret>()];
-            self.read_exact(&mut buf)?;
-            Ok(<$ret>::from_le_bytes(buf))
-        })*
-    };
-}
-
-macro_rules! define_read_be_methods {
-    { $($name:ident -> $ret:ty;)* } => {
-        $(fn $name(&mut self) -> ::std::io::Result<$ret> {
-            let mut buf = [0u8; ::std::mem::size_of::<$ret>()];
-            self.read_exact(&mut buf)?;
-            Ok(<$ret>::from_be_bytes(buf))
-        })*
-    };
-}
-
-#[cfg(feature = "std")]
-pub trait ReadExt: Read {
-    fn read_u8(&mut self) -> std::io::Result<u8> {
-        let mut buf = [0u8; 1];
-        self.read_exact(&mut buf)?;
-        Ok(buf[0])
-    }
-
-    fn read_i8(&mut self) -> std::io::Result<i8> {
-        let mut buf = [0u8; 1];
-        self.read_exact(&mut buf)?;
-        Ok(i8::from_ne_bytes(buf))
-    }
-
-    define_read_le_methods! {
-        read_u16_le -> u16;
-        read_u32_le -> u32;
-        read_u64_le -> u64;
-
-        read_i16_le -> i16;
-        read_i32_le -> i32;
-        read_i64_le -> i64;
-    }
-
-    define_read_be_methods! {
-        read_u16_be -> u16;
-        read_u32_be -> u32;
-        read_u64_be -> u64;
-
-        read_i16_be -> i16;
-        read_i32_be -> i32;
-        read_i64_be -> i64;
-    }
-
-    fn read_n_exact<const N: usize>(&mut self) -> std::io::Result<[u8; N]> {
-        let mut buf = [0u8; N];
-        self.read_exact(&mut buf)?;
-        Ok(buf)
-    }
-}
-
-macro_rules! define_write_le_methods {
-    { $($name:ident($type:ty);)* } => {
-        $(fn $name(&mut self, value: $type) -> ::std::io::Result<()> {
-            self.write_all(&value.to_le_bytes())
-        })*
-    };
-}
-
-macro_rules! define_write_be_methods {
-    { $($name:ident($type:ty);)* } => {
-        $(fn $name(&mut self, value: $type) -> ::std::io::Result<()> {
-            self.write_all(&value.to_be_bytes())
-        })*
-    };
-}
-
 #[cfg(feature = "std")]
 pub trait WriteExt: Write {
-    fn write_u8(&mut self, value: u8) -> std::io::Result<()> {
-        self.write_all(&[value])
-    }
-
-    fn write_i8(&mut self, value: i8) -> std::io::Result<()> {
-        self.write_all(&value.to_ne_bytes())
-    }
-
-    define_write_le_methods! {
-        write_u16_le(u16);
-        write_u32_le(u32);
-        write_u64_le(u64);
-
-        write_i16_le(i16);
-        write_i32_le(i32);
-        write_i64_le(i64);
-    }
-
-    define_write_be_methods! {
-        write_u16_be(u16);
-        write_u32_be(u32);
-        write_u64_be(u64);
-
-        write_i16_be(i16);
-        write_i32_be(i32);
-        write_i64_be(i64);
-    }
-
     fn fill(&mut self, value: u8, count: u64) -> std::io::Result<()> {
         let zeros = [value; 1024];
         let mut remaining = count;
@@ -125,9 +20,6 @@ pub trait WriteExt: Write {
 
 #[cfg(feature = "std")]
 impl<W: Write> WriteExt for W {}
-
-#[cfg(feature = "std")]
-impl<R: Read> ReadExt for R {}
 
 #[cfg(feature = "std")]
 pub trait ReadSeekWriteExt: Read + Write + Seek {
@@ -190,7 +82,7 @@ impl<R: Read + Seek + Write> ReadSeekWriteExt for R {}
 
 macro_rules! declare_as_methods {
     { $($name:ident -> $type:ty;)* } => {
-        $(fn $name(&self) -> $type;)*
+        $(#[allow(dead_code)] fn $name(&self) -> $type;)*
     };
 }
 
@@ -206,12 +98,11 @@ pub trait ByteSliceExt {
         as_u32_be -> u32;
         as_u64_be -> u64;
     }
-
-    fn short_slice(&self, start: usize, count: usize) -> &[u8];
 }
 
 macro_rules! define_as_methods {
     (@internal_one $conversion:ident $name:ident $type:ty) => {
+        #[allow(dead_code)]
         fn $name(&self) -> $type {
             assert!(self.len() == core::mem::size_of::<$type>());
 
@@ -240,9 +131,5 @@ impl ByteSliceExt for [u8] {
         be as_u16_be -> u16;
         be as_u32_be -> u32;
         be as_u64_be -> u64;
-    }
-
-    fn short_slice(&self, start: usize, count: usize) -> &[u8] {
-        &self[start..core::cmp::min(start + count, self.len())]
     }
 }
